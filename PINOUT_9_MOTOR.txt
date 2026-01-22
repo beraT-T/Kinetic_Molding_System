@@ -1,0 +1,54 @@
+STM32F407VETX - 9 Motor Pinout (3x3 Grid)
+==========================================
+
+MOTOR 1:
+  Forward:  PE12 (GPIOE, Pin 12)
+  Reverse:  PE13 (GPIOE, Pin 13)
+
+MOTOR 2:
+  Forward:  PB4  (GPIOB, Pin 4)
+  Reverse:  PB5  (GPIOB, Pin 5)
+
+MOTOR 3:
+  Forward:  PC4  (GPIOC, Pin 4)
+  Reverse:  PC5  (GPIOC, Pin 5)
+
+MOTOR 4:
+  Forward:  PD10 (GPIOD, Pin 10)
+  Reverse:  PD11 (GPIOD, Pin 11)
+
+MOTOR 5:
+  Forward:  PC2  (GPIOC, Pin 2)
+  Reverse:  PC3  (GPIOC, Pin 3)
+
+MOTOR 6:
+  Forward:  PC8  (GPIOC, Pin 8)
+  Reverse:  PC9  (GPIOC, Pin 9)
+
+MOTOR 7:
+  Forward:  PE0  (GPIOE, Pin 0)
+  Reverse:  PE1  (GPIOE, Pin 1)
+
+MOTOR 8:
+  Forward:  PB13 (GPIOB, Pin 13)
+  Reverse:  PB12 (GPIOB, Pin 12) - Not: "Moto8_R_Pin" olarak tanımlı
+
+MOTOR 9:
+  Forward:  PB7  (GPIOB, Pin 7)
+  Reverse:  PB6  (GPIOB, Pin 6)
+
+RS485:
+  DE/RE:    PA8  (GPIOA, Pin 8)
+  TX:       PA2  (USART2_TX)
+  RX:       PA3  (USART2_RX)
+
+LED (Status):
+  PE4       (GPIOE, Pin 4)
+
+NOTLAR:
+- Motor 7'nin Forward pini: PE0, Reverse pini: PE1
+- Motor 8'in pin isimlendirmesi farklı: "Moto8_R_Pin" (typo var)
+- Tüm motorlar Forward/Reverse pin çifti ile kontrol ediliyor
+- 9 motor = 3x3 grid için tasarlanmış
+
+

@@ -1,0 +1,40 @@
+ENCODER YAPILANDIRMASI (9 Motor için)
+=====================================
+
+Encoder Mode: TIM_ENCODERMODE_TI1
+Period: 65535 (16-bit timer için)
+Prescaler: 0
+Counter Mode: TIM_COUNTERMODE_UP
+
+MEVCUT TIMER YAPILANDIRMASI (main.c'de):
+-----------------------------------------
+TIM1: Encoder Mode - PE9 (CH1), PE11 (CH2)
+TIM2: Encoder Mode - PA5 (CH1), PB3 (CH2) - Period: 4294967295 (32-bit)
+TIM3: Encoder Mode - PA6 (CH1), PA7 (CH2)
+TIM4: Encoder Mode - PD12 (CH1), PD13 (CH2)
+TIM5: Encoder Mode - PA0 (CH1), PA1 (CH2) - Period: 4294967295 (32-bit)
+TIM8: Encoder Mode - PC6 (CH1), PC7 (CH2)
+
+TIM9: Input Capture - PE5 (CH1), PE6 (CH2)
+TIM10: Input Capture - PB8 (CH1)
+TIM11: Input Capture - PB9 (CH1)
+TIM12: Input Capture - PB14 (CH1), PB15 (CH2)
+
+ENCODER OKUMA FONKSİYONU (Örnek):
+----------------------------------
+int32_t Read_Encoder(TIM_HandleTypeDef *htim) {
+    int32_t count = (int32_t)__HAL_TIM_GET_COUNTER(htim);
+    __HAL_TIM_SET_COUNTER(htim, 0); // Reset (opsiyonel)
+    return count;
+}
+
+PULSE SAYISI HESAPLAMA:
+------------------------
+- Encoder çözünürlüğüne bağlı (örn: 1000 pulse/tur)
+- Motor dişli oranına bağlı
+- Aktüatör milimetre/pulse oranına bağlı
+
+Örnek: 1000 pulse/tur, 5mm/tur aktüatör = 200 pulse/mm
+600mm için = 120,000 pulse
+
+
