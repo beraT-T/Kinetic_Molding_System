@@ -19,8 +19,8 @@ export default function HeatmapPanel({
     activeSlaves,
     currentSlaveId,
     onSlaveChange,
-    onSendAllForce,
-    isSendingForce
+    onHomeAllSlaves,
+    isHomingAll
 }) {
     return (
         <div className="bg-[#0f172a]/40 backdrop-blur-2xl rounded-2xl p-6 border border-blue-900/20 shadow-2xl">
@@ -140,21 +140,21 @@ export default function HeatmapPanel({
                     )}
                 </button>
 
-                {/* Force All (ping kontrolü yok, 16 slave) */}
+                {/* Home All (tüm aktif slave'ler) */}
                 <button
-                    onClick={onSendAllForce}
-                    disabled={!gridData || !isConnected || isSendingForce}
-                    className={`h-11 rounded-lg text-xs font-bold transition-all ${!gridData || !isConnected || isSendingForce
+                    onClick={onHomeAllSlaves}
+                    disabled={!isConnected || isHomingAll}
+                    className={`h-11 rounded-lg text-xs font-bold transition-all ${!isConnected || isHomingAll
                             ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-700/50'
                             : 'bg-violet-600/90 hover:bg-violet-600 text-white border border-violet-500/30 shadow-lg shadow-violet-900/20'
                         }`}
                 >
-                    {isSendingForce ? (
+                    {isHomingAll ? (
                         <RotateCw className="animate-spin mx-auto" size={16} />
                     ) : (
                         <div className="flex items-center justify-center gap-2">
                             <Zap size={12} fill="currentColor" />
-                            <span>FORCE 16</span>
+                            <span>HOME ALL</span>
                         </div>
                     )}
                 </button>

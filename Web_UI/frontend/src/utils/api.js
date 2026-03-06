@@ -109,5 +109,24 @@ export const api = {
             body: JSON.stringify({ positions })
         });
         return response.json();
+    },
+
+    // Seçili slave'in tüm motorlarına HOME komutu gönder
+    homeAll: async (slave_id) => {
+        const response = await fetch(`${API_BASE}/api/home-all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slave_id })
+        });
+        return response.json();
+    },
+
+    // Tüm aktif slave'lere HOME komutu gönder
+    homeActiveSlaves: async () => {
+        const response = await fetch(`${API_BASE}/api/home-active-slaves`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        return response.json();
     }
 };
