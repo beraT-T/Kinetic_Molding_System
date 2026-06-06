@@ -452,6 +452,57 @@ def send_to_slave():
         
         return jsonify({'success': False, 'error': str(e)}), 400
 
+@app.route('/api/home-all', methods=['POST'])
+def home_all():
+    """Seçili slave'in tüm 9 motoruna HOME komutu gönder"""
+    global ser, is_connected
+
+    try:
+        if (not ser or not ser.is_open) and not DEMO_MODE:
+            return jsonify({'success': False, 'error': 'Serial bağlantısı yok'}), 400
+
+        data = request.json
+        slave_id = int(data.get('slave_id', 1))
+
+        print("\n" + "="*60)
+        print(f"🏠 HOME ALL - Slave {slave_id:02d} - 9 Motor")
+        print("="*60)
+
+        socketio.emit('serial_data', {
+            'timestamp': time.time(),
+            'message': f'🏠 Slave {slave_id} tüm motorlar HOME\'a gönderiliyor...'
+        })
+
+        sent_count = 0
+        for motor_id in range(1, 10):
+            cmd = f"HOME:{slave_id:02d}:{motor_id:02d}"
+            try:
+                if ser and ser.is_open:
+                    ser.write(f"{cmd}\r\n".encode('utf-8'))
+                    ser.flush()
+                sent_count += 1
+                print(f"   [{motor_id}/9] → {cmd}")
+                socketio.emit('serial_data', {
+                    'timestamp': time.time(),
+                    'message': f'[{motor_id}/9] → {cmd}'
+                })
+                time.sleep(0.02)
+            except Exception as e:
+                print(f"   ❌ Motor {motor_id} hatası: {e}")
+
+        print(f"✅ {sent_count}/9 HOME komutu gönderildi")
+        print("="*60 + "\n")
+
+        return jsonify({
+            'success': True,
+            'sent_count': sent_count,
+            'message': f'Slave {slave_id}: {sent_count} HOME komutu gönderildi'
+        })
+    except Exception as e:
+        print(f"\n❌ HOME ALL HATASI: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
 @app.route('/api/home-slave3', methods=['POST'])
 def home_slave3():
     """Slave 3'ün tüm motorlarını 0 pozisyonuna gönder - SENKRON HAREKET"""
@@ -685,6 +736,58 @@ def test_ping():
     except Exception as e:
         print(f"❌ Test hatası: {e}")
         return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/home-active-slaves', methods=['POST'])
+def home_active_slaves():
+    """Tüm aktif slave'lerin 9 motoruna HOME komutu gönder"""
+    global ser, is_connected, active_slaves
+
+    try:
+        if (not ser or not ser.is_open) and not DEMO_MODE:
+            return jsonify({'success': False, 'error': 'Serial bağlantısı yok'}), 400
+
+        if not active_slaves:
+            return jsonify({'success': False, 'error': 'Aktif slave bulunamadı. Önce tarama yapın.'}), 400
+
+        print("\n" + "="*60)
+        print(f"🏠 HOME ALL - {len(active_slaves)} Aktif Slave")
+        print("="*60)
+
+        socketio.emit('serial_data', {
+            'timestamp': time.time(),
+            'message': f'🏠 HOME ALL: {len(active_slaves)} slave, tüm motorlar HOME\'a gönderiliyor...'
+        })
+
+        total_sent = 0
+        for slave_id in active_slaves:
+            for motor_id in range(1, 10):
+                cmd = f"HOME:{slave_id:02d}:{motor_id:02d}"
+                try:
+                    if ser and ser.is_open:
+                        ser.write(f"{cmd}\r\n".encode('utf-8'))
+                        ser.flush()
+                    total_sent += 1
+                    print(f"   → {cmd}")
+                    socketio.emit('serial_data', {
+                        'timestamp': time.time(),
+                        'message': f'→ {cmd}'
+                    })
+                    time.sleep(0.02)
+                except Exception as e:
+                    print(f"   ❌ {cmd} hatası: {e}")
+
+        print(f"✅ {total_sent} HOME komutu gönderildi")
+        print("="*60 + "\n")
+
+        return jsonify({
+            'success': True,
+            'sent_count': total_sent,
+            'message': f'{len(active_slaves)} slave, {total_sent} HOME komutu gönderildi'
+        })
+    except Exception as e:
+        print(f"\n❌ HOME ALL HATASI: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
 
 @app.route('/api/send-all-force', methods=['POST'])
 def send_all_force():

@@ -18,8 +18,8 @@ export default function App() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [isSendingSlave3, setIsSendingSlave3] = useState(false);
-    const [isSendingForce, setIsSendingForce] = useState(false);
     const [isHoming, setIsHoming] = useState(false);
+    const [isHomingAll, setIsHomingAll] = useState(false);
     const [hoverInfo, setHoverInfo] = useState(null);
     const [viewerKey, setViewerKey] = useState(0);
     const [selectedPort, setSelectedPort] = useState('');
@@ -218,13 +218,13 @@ export default function App() {
         }
 
         setIsHoming(true);
-        addLog(`🏠 Slave ${currentSlaveId} motorları sıfırlanıyor...`);
+        addLog(`🏠 Slave ${currentSlaveId} tüm motorlar HOME'a gönderiliyor...`);
 
         try {
-            const data = await api.sendCommand(`ALL:${currentSlaveId.toString().padStart(2, '0')}:0`);
+            const data = await api.homeAll(currentSlaveId);
 
             if (data.success) {
-                addLog(`✅ Slave ${currentSlaveId} sıfırlama komutu gönderildi.`);
+                addLog(`✅ Slave ${currentSlaveId}: ${data.sent_count} HOME komutu gönderildi.`);
             } else {
                 addLog(`❌ ${data.error}`);
             }
@@ -233,6 +233,35 @@ export default function App() {
             console.error(error);
         } finally {
             setIsHoming(false);
+        }
+    };
+
+    const handleHomeAllSlaves = async () => {
+        if (!isConnected) {
+            addLog('❌ Master bağlantısı yok');
+            return;
+        }
+        if (activeSlaves.length === 0) {
+            addLog('❌ Aktif slave yok. Önce ağ taraması yapın.');
+            return;
+        }
+
+        setIsHomingAll(true);
+        addLog(`🏠 HOME ALL: ${activeSlaves.length} aktif slave HOME'a gönderiliyor...`);
+
+        try {
+            const data = await api.homeActiveSlaves();
+
+            if (data.success) {
+                addLog(`✅ HOME ALL: ${data.sent_count} komut gönderildi.`);
+            } else {
+                addLog(`❌ ${data.error}`);
+            }
+        } catch (error) {
+            addLog('❌ HOME ALL başarısız');
+            console.error(error);
+        } finally {
+            setIsHomingAll(false);
         }
     };
 
@@ -261,34 +290,6 @@ export default function App() {
             addLog('❌ Gönderim başarısız');
         } finally {
             setIsSending(false);
-        }
-    };
-
-    const handleSendAllForce = async () => {
-        if (!gridData) {
-            addLog('❌ Önce hesaplama yapın');
-            return;
-        }
-        if (!isConnected) {
-            addLog('❌ Master bağlantısı yok');
-            return;
-        }
-
-        setIsSendingForce(true);
-        addLog('🚀 FORCE ALL: 144 komut gönderiliyor (ping kontrolü yok)...');
-
-        try {
-            const data = await api.sendAllForce(gridData);
-            if (data.success) {
-                addLog(`✅ FORCE ALL: ${data.sent_count} komut gönderildi`);
-                addLog('⏳ Tüm motorlar hareket ediyor...');
-            } else {
-                addLog(`❌ ${data.error}`);
-            }
-        } catch (error) {
-            addLog('❌ Gönderim başarısız');
-        } finally {
-            setIsSendingForce(false);
         }
     };
 
@@ -414,8 +415,8 @@ export default function App() {
                                 activeSlaves={activeSlaves}
                                 currentSlaveId={currentSlaveId}
                                 onSlaveChange={setCurrentSlaveId}
-                                onSendAllForce={handleSendAllForce}
-                                isSendingForce={isSendingForce}
+                                onHomeAllSlaves={handleHomeAllSlaves}
+                                isHomingAll={isHomingAll}
                             />
                         </div>
                     </div>
