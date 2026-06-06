@@ -783,5 +783,5 @@ def send_all_force():
 
 
 if __name__ == '__main__':
-    print("Backend başlatılıyor: http://localhost:5000")
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    print("Backend başlatılıyor: http://localhost:5001")
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

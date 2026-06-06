@@ -41,7 +41,7 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        const socket = io('http://localhost:5000', {
+        const socket = io('http://localhost:5001', {
             transports: ['websocket', 'polling'],
             reconnectionAttempts: 10,
             reconnectionDelay: 2000,
