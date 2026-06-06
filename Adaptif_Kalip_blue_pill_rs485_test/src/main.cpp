@@ -1,124 +1,99 @@
+/**
+ * STM32F103 MASTER — Şeffaf RS485 Köprüsü - v4.1
+ *
+ * GÖREV: PC (USB) ↔ RS485 hattı arasında şeffaf köprü.
+ *   - PC'den gelen her satır (\n ile biten) RS485'e iletilir.
+ *   - RS485'ten gelen her byte USB'ye iletilir.
+ *   - Tüm zamanlama ve handshake mantığı Python UI'da.
+ *
+ * DÜZELTİLENLER (v4.0 → v4.1):
+ *   [1] Sabit delay(4500), delay(5000) kaldırıldı — UI zamanlıyor
+ *   [2] String sınıfı yerine char dizisi — heap fragmantasyon yok
+ *   [3] DE/RE geçişi flush() sonrası — son bit garanti çıkıyor
+ *   [4] LED aktivite göstergesi iyileştirildi
+ */
+
 #include <Arduino.h>
 
-/* --- DONANIM AYARLARI --- */
-// RS485 Modül Pinleri
-#define RS485_DE_RE_PIN PA4  // Kontrol Pini
+// --- PIN TANIMLARI ---
+#define RS485_DE_RE_PIN PA4
 #define RS485_TX_PIN    PA2
 #define RS485_RX_PIN    PA3
+#define BAUD_RATE       9600
+#define LED_PIN         PC13   // BluePill onboard LED — active LOW
 
-// Haberleşme Hızı (Tüm sistemde AYNI olmalı!)
-#define BAUD_RATE       9600 
+HardwareSerial Serial485(PA3, PA2);
 
-// LED (PC13) - Veri akışını görmek için
-#define LED_PIN         PC13
+// Satır tamponu
+#define USB_BUF_LEN 80
+char    usb_buf[USB_BUF_LEN];
+uint8_t usb_idx = 0;
 
-// Serial Nesnesi (PA2/PA3)
-HardwareSerial Serial485(PA3, PA2); 
-
-// Veri Tamponları
-String usbBuffer = "";
-bool stringComplete = false;
-
-void rs485_tx_mode() {
-  digitalWrite(RS485_DE_RE_PIN, HIGH);
-  delayMicroseconds(50); // Modülün uyanması için güvenli süre
+void rs485_tx_mode(void) {
+    digitalWrite(RS485_DE_RE_PIN, HIGH);
+    delayMicroseconds(200); // DE oturması
 }
+void rs485_rx_mode(void) {
+    Serial485.flush();    // Son bitin yazılım FIFO'dan çıktığından emin ol
+    // 9600 baud'da 1 byte = ~1.04ms. Son byte'ın HW shift register'dan
+    // çıkması için ekstra bekleme. Çok kritik: az olursa son karakter bozulur.
+    delay(3);
+    digitalWrite(RS485_DE_RE_PIN, LOW);
 
-void rs485_rx_mode() {
-  Serial485.flush(); // Son bitin gittiğinden emin ol
-  digitalWrite(RS485_DE_RE_PIN, LOW);
+    // === ÇOK KRİTİK: TX sırasında RX hattı yüzer durumdaydı, UART sahte
+    // start bit algılayıp RX buffer'a çöp byte'lar koymuş olabilir. Slave
+    // cevabı vermeden önce 2ms boyunca SÜREKLİ drain ediyoruz.
+    // (Slave Send_Response'da 5ms bekliyor, yani 2ms drain güvenli.)
+    unsigned long drain_until = millis() + 2;
+    while ((long)(drain_until - millis()) > 0) {
+        while (Serial485.available()) (void)Serial485.read();
+    }
 }
 
 void setup() {
-  // 1. USB Serial (PC ile)
-  Serial.begin(115200); // USB hızı sanaldır, yüksek kalabilir.
-  
-  // 2. RS485 Serial (Slaves ile)
-  Serial485.begin(BAUD_RATE);
-  
-  // 3. Pin Ayarları
-  pinMode(RS485_DE_RE_PIN, OUTPUT);
-  pinMode(LED_PIN, OUTPUT);
-  
-  // Başlangıç durumu: Dinleme (RX)
-  rs485_rx_mode();
-  
-  // Hazır sinyali (Sadece PC görür)
-  while(!Serial); 
-  Serial.println("MASTER_READY");
+    Serial.begin(115200);     // USB (PC ile)
+    Serial485.begin(BAUD_RATE); // RS485 (Slave'lerle)
+
+    pinMode(RS485_DE_RE_PIN, OUTPUT);
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH); // Kapalı (active LOW)
+
+    rs485_rx_mode();
+
+    // NOT: while(!Serial) KALDIRILDI — DTR sinyali olmadan sonsuza kadar
+    // beklemesini önler. Serial.println başarısız olsa bile sorun değil.
+    Serial.println("MASTER_READY");
+    // Hazır sinyali: 2 blink
+    for (uint8_t i = 0; i < 2; i++) {
+        digitalWrite(LED_PIN, LOW);  delay(100);
+        digitalWrite(LED_PIN, HIGH); delay(100);
+    }
 }
 
 void loop() {
-  
-  // --- A. PC'DEN GELENİ DİNLE (USB -> RS485) ---
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
-    
-    // Veriyi tampona ekle
-    usbBuffer += inChar;
-    
-    // Satır sonu karakteri geldiyse paket tamamdır
-    if (inChar == '\n') {
-      stringComplete = true;
-    }
-  }
+    // ── A: USB → RS485 ─────────────────────────────────────
+    // Satır tamponlama: \n gelince hattı gönder
+    while (Serial.available()) {
+        char c = (char)Serial.read();
+        if (usb_idx < USB_BUF_LEN - 1) usb_buf[usb_idx++] = c;
 
-  // Paket tamamlandıysa RS485'e bas
-  if (stringComplete) {
-    // Komut tipini kontrol et (temizlenmeden önce)
-    bool isPing = (usbBuffer.indexOf("PING") >= 0);
-    bool isHome = (usbBuffer.indexOf("HOME") >= 0);
-    bool isSetId = (usbBuffer.indexOf("SETID") >= 0);
-    
-    // Görsel geri bildirim (LED Yan)
-    digitalWrite(LED_PIN, LOW); 
-    
-    // 1. Gönderim Moduna Geç
-    rs485_tx_mode();
-    
-    // 2. Veriyi Bas
-    Serial485.print(usbBuffer);
-    Serial485.flush(); // Tüm verinin gönderildiğinden emin ol
-    
-    // 3. Dinleme Moduna Dön (Slave'in yanıt vermesi için bekle)
-    // Flash yazma işlemi zaman alabilir, bu yüzden daha uzun bekle
-    if (isSetId) {
-      delay(200); // SETID için Flash yazma süresi
-    } else {
-      delay(50); // Diğer komutlar için kısa bekleme
-    }
-    rs485_rx_mode();
-    
-    // Slave'in yanıtını almak için bekle
-    if (isPing) {
-      delay(4500); // PING için 4 saniye + buffer (slave'in 4 saniye beklemesi var)
-    } else if (isHome) {
-      delay(5000); // HOME için 5 saniye (homing işlemi zaman alabilir)
-    } else {
-      delay(200); // Diğer komutlar için (MOV, ALL vb.)
-    }
-    
-    // 4. Temizlik
-    usbBuffer = "";
-    stringComplete = false;
-    
-    // LED Sön
-    digitalWrite(LED_PIN, HIGH); 
-  }
+        if (c == '\n') {
+            usb_buf[usb_idx] = '\0';
+            usb_idx = 0;
 
-  // --- B. SLAVE'LERDEN GELENİ DİNLE (RS485 -> USB) ---
-  // Karakter karakter oku ve direkt PC'ye aktar
-  if (Serial485.available()) {
-    // LED Yan (Veri Geliyor)
-    digitalWrite(LED_PIN, LOW);
-    
-    // Tüm mevcut veriyi oku ve direkt PC'ye aktar
+            digitalWrite(LED_PIN, LOW);   // TX sinyali
+            rs485_tx_mode();
+            Serial485.write((uint8_t*)usb_buf, strlen(usb_buf));
+            rs485_rx_mode();
+            digitalWrite(LED_PIN, HIGH);
+        }
+    }
+
+    // ── B: RS485 → USB ─────────────────────────────────────
+    // Slave'den gelen her byte direkt USB'ye aktar
     while (Serial485.available()) {
-      char c = Serial485.read();
-      Serial.write(c);
+        digitalWrite(LED_PIN, LOW);
+        Serial.write((uint8_t)Serial485.read());
+        digitalWrite(LED_PIN, HIGH);
     }
-    
-    // LED Sön
-    digitalWrite(LED_PIN, HIGH);
-  }
 }
