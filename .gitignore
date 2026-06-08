@@ -29,4 +29,7 @@ Debug/
 
 # Python version file
 .python-version
-.claude/
+.claude/worktrees/
+.claude/settings.local.json
+.claude/worktrees/
+.claude/settings.local.json

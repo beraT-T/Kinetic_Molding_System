@@ -1,179 +1,83 @@
-# Adaptif Kalıp Güç Test Sistemi
+# Adaptif Kalıp / Kinetic Molding System
 
-## Proje Genel Bakış
+12×12 = **144 lineer aktüatörlü** adaptif kalıp yüzeyi. Üstte tek parça (yekpare) silikon membran
+olduğu için motorlar eş zamanlı hareket eder. Bir STL modeli yüklenir, yüzeyi 12×12 Z-pozisyon
+grid'ine interpolasyonla çevrilir, her motor kendi Z'sine gider ve membran o şekli alır.
 
-Bu proje, **12x12 = 144 noktalı** adaptif kalıp yüzey kontrol sistemi için tasarlanmıştır. Sistem, bilgisayardan gelen pozisyon verilerini alarak, 16 adet slave modül üzerinden toplam 144 adet lineer aktüatörü kontrol eder.
+- Aktüatörler: Hall-effect encoder'lı, 0–600 mm strok, ~4 mm/s (tam strok ≈ 150 sn).
+- Demeraj akımı yüksek → motorlar 1'er saniye kademeli başlatılır (eş zamanlı sayılır).
+- Modüler: her 3×3 = 9 motor bir "slave" modülü; 16 slave × 9 = 144. Adaptif (kaç modül configliyse).
 
-## Sistem Mimarisi
+> Projenin tam teknik belleği **`CLAUDE.md`** dosyasındadır (mimari, pin/timer haritası, kalibrasyon,
+> protokol, test döngüsü). Claude Code ile çalışırken otomatik okunur.
 
-### 1. Master (Blue Pill - STM32F103C6)
-- **Görev**: Bilgisayar ↔ RS485 köprü görevi
-- **Bağlantı**: 
-  - USB Serial (115200 baud) ↔ Bilgisayar
-  - RS485 (9600 baud) ↔ 16 Slave
-- **Fonksiyon**: 
-  - Bilgisayardan gelen 12x12 pozisyon array'ini alır
-  - Array'i 16 parçaya böler (her parça 3x3)
-  - Her parçayı ilgili slave'e gönderir
-  - Slave'lerden gelen yanıtları bilgisayara iletir
-
-### 2. Slave Modüller (16 Adet - STM32F407VETX)
-- **Her Slave**: 3x3 = 9 adet motor kontrolü
-- **Toplam**: 16 slave × 9 motor = 144 motor
-- **Motor Tipi**: 600mm Hall Effect'li Lineer Aktüatör
-- **Bağlantı**: RS485 üzerinden master ile haberleşir
-- **Fonksiyon**:
-  - Master'dan 3x3 pozisyon array'i alır
-  - Her motoru ilgili pozisyona sürer
-  - Encoder okuma ve pozisyon kontrolü yapar
-
-### 3. Bilgisayar Arayüzü (Python UI)
-- **Görev**: Test ve kontrol arayüzü
-- **Özellikler**:
-  - 16 slave'in durumunu görselleştirme (4x4 grid)
-  - Ağ taraması (PING/PONG)
-  - Motor kontrolü (slider'lar)
-  - Terminal/log görüntüleme
-
-## Veri Akışı
+## Donanım topolojisi
 
 ```
-Bilgisayar (12x12 Array)
-    ↓
-Master (Blue Pill)
-    ↓ (Array'i 16 parçaya böler)
-16 x Slave (Her biri 3x3 array alır)
-    ↓
-144 Motor (Her motor kendi pozisyonuna gider)
+Host (PC / Raspberry Pi 5)
+   │ USB seri
+Blue Pill (STM32F103)  — şeffaf RS485 köprüsü, 9600 baud
+   │ RS485 (adresli)
+Slave modülü = 2× Black Pill (STM32F401RC, HSE 25 MHz)
+   ├─ U3 "yönetici": RS485 + motor 6-9 + flash slave ID
+   │     └─ USART2 115200 ──> U2
+   └─ U2 "işçi": sadece USART2 + motor 1-5
 ```
 
-## Array Dağıtım Mantığı
+## Firmware
 
-### Giriş: 12x12 Pozisyon Array'i
-```
-[P00, P01, P02, ..., P0,11]
-[P10, P11, P12, ..., P1,11]
-...
-[P11,0, P11,1, ..., P11,11]
-```
+- **v4.4** (`Adaptif_kalip_v4_slave1_rs485_4motor`, `..._slave2_5motor`,
+  `Adaptif_Kalip_blue_pill_rs485_test`): çalışan temel, bloklayıcı. Yedek/referans olarak korunur.
+- **v5.1** (`Adaptif_kalip_v5_U3_4motor`, `Adaptif_kalip_v5_U2_5motor`): güncel. Non-blocking durum
+  makinesi, histerezis (salınım yok), stall/encoder-kopma koruması, encoder giriş filtresi, doğru
+  home (entegre limit switch + 200 sn timeout), 1 sn kademeli eş zamanlı hareket, `ARR`/`STAT`/`HOME`
+  komutları. Detay: **`V5_MIMARI_NOTU.md`**.
+- **Kalibrasyon araçları** (`Calibration_U2_5motor`, `Calibration_U3_4motor`): her motor/encoder
+  yönünü ve puls/mm'sini ölçmek için. Rehber: **`KALIBRASYON_REHBERI.md`**.
 
-### Çıkış: 16 Adet 3x3 Array (Her Slave'e)
-- **Slave 1**: [P00, P01, P02] [P10, P11, P12] [P20, P21, P22]
-- **Slave 2**: [P03, P04, P05] [P13, P14, P15] [P23, P24, P25]
-- **Slave 3**: [P06, P07, P08] [P16, P17, P18] [P26, P27, P28]
-- **Slave 4**: [P09, P0A, P0B] [P19, P1A, P1B] [P29, P2A, P2B]
-- ... (devam eder)
-- **Slave 16**: [P99, P9A, P9B] [PA9, PAA, PAB] [PB9, PBA, PBB]
+### Kalibrasyon gerçekleri (doğrulandı)
+9 motorun hepsi tutarlı: `MOTOR_ENCODER_REVERSED = true`, `MOTOR_HOME_RETRACT_FWD = true`.
+`CAL_HARDWARE ≈ 79.93 puls/mm` (v5.1'de motor başına `cal` alanı var).
 
-**Not**: Array indeksleme 0'dan başlar. Her slave 3x3 = 9 pozisyon alır.
+## Protokol v5.1 (host → U3, RS485, async)
 
-## Protokol
+`PING` · `GETID`/`SETID` · `MOV:id:motor:mm` · `ALL:id:mm` · `ARR:id:p1..p9` · `HOME:id` (hepsi) ·
+`HOME:id:motor` · `GETPOS:id:motor` · `STAT:id`. Komut hemen ack döner; bitiş `STAT` poll ile
+anlaşılır (token = `<durum harfi><mm>`, durum: I/M/H/S/F). Tam tablo `CLAUDE.md` ve `V5_MIMARI_NOTU.md`.
 
-### Master ↔ Slave Haberleşme (RS485 - 9600 baud)
+## Arayüz
 
-#### PING/PONG (Haberleşme Testi)
-- **Gönder**: `PING:01\n` (Slave ID 1'e ping)
-- **Yanıt**: `PONG:01\n`
+- **`UI_v2.0_QML/`** (güncel, `ui_v2.0` branch'inde): PySide6 + QML, tek süreç, GPU hızlandırmalı,
+  Raspberry Pi optimize. Flask/tarayıcı yok. Çalıştırma: `python3 main.py [--fullscreen]`.
+  Detay: `UI_v2.0_QML/README.md`.
+- **`Web_UI/`** (legacy): Flask + React/Vite + Socket.IO. Referans/yedek olarak tutuluyor.
 
-#### Slave ID Ayarlama (Flash Memory'de Saklanır)
-- **Komut**: `SETID:ID\n` (Broadcast, tüm slave'ler dinler)
-  - Örnek: `SETID:05\n` (Slave ID'yi 5 yap)
-  - **Yanıt**: `IDSET:05\n` (Başarılı) veya `IDERR:...\n` (Hata)
-  - **Not**: ID Flash memory'de saklanır, power cycle'dan sonra da kalır
-  - **Geçerli Aralık**: 1-16
+## Derleme / yükleme (PlatformIO)
 
-#### Pozisyon Komutları
-- **Tek Motor**: `MOV:SlaveID:MotorID:Value\n`
-  - Örnek: `MOV:01:05:300\n` (Slave 1, Motor 5, 300mm)
-  
-- **Tüm Motorlar**: `ALL:SlaveID:Value\n`
-  - Örnek: `ALL:01:300\n` (Slave 1, tüm motorlar 300mm)
-
-#### 3x3 Array Gönderimi (İleride eklenecek)
-- **Format**: `ARR:SlaveID:P00:P01:P02:P10:P11:P12:P20:P21:P22\n`
-  - Örnek: `ARR:01:100:150:200:120:170:220:140:190:240\n`
-
-## Donanım Özellikleri
-
-### Master (Blue Pill)
-- **MCU**: STM32F103C6
-- **RS485**: PA2/PA3, DE/RE: PA4
-- **USB Serial**: Virtual COM Port
-
-### Slave (STM32F407)
-- **MCU**: STM32F407VETX
-- **RS485**: USART2 (PA2/PA3), DE/RE: PA8
-- **Motor Kontrol**: 9 adet Forward/Reverse pin çifti
-- **Encoder**: 9 adet (TIM1-5, TIM8-12)
-- **LED**: PE4 (Durum göstergesi)
-
-### Motor
-- **Tip**: Hall Effect'li Lineer Aktüatör
-- **Menzil**: 0-600mm
-- **Kontrol**: Forward/Reverse pin çifti ile
-
-## Klasör Yapısı
-
-```
-adaptif_kalip_guc_test/
-├── README.md (Bu dosya)
-├── Adaptif_Kalip_blue_pill_rs485_test/  (Master - PlatformIO)
-│   ├── src/main.cpp
-│   └── Tester_UI/ui_v1.0.py
-├── Core/                                 (Slave - STM32CubeIDE)
-│   ├── Inc/main.h
-│   └── Src/main.c
-└── Drivers/                              (HAL Driver)
+```bash
+pio run -e genericSTM32F401RC      # derle
+pio run -t upload                  # ST-Link ile yukle
+pio device monitor -b 115200       # seri monitor
 ```
 
-## Geliştirme Durumu
+Kart fiziksel olarak F411 ise `platformio.ini` board satırını güncelle (kod aynı kalır).
 
-### ✅ Tamamlanan
-- Master-Slave RS485 haberleşme altyapısı
-- PING/PONG test protokolü
-- Python UI temel arayüzü
-- Slave donanım konfigürasyonu (motor pinleri, encoder timer'ları)
-- **Dinamik Slave ID sistemi (Flash memory'de saklama)**
-- **SETID protokolü (Master üzerinden ID atama)**
+## Depo yapısı
 
-### 🚧 Yapılacaklar
-- [ ] Master: 12x12 array'i alma ve 16 parçaya bölme algoritması
-- [ ] Master: Array parçalarını slave'lere gönderme protokolü
-- [ ] Slave: 3x3 array alma ve parse etme
-- [ ] Slave: Motor kontrol algoritması (PID/pozisyon kontrolü)
-- [ ] Slave: Encoder okuma ve pozisyon geri bildirimi
-- [ ] Python UI: 12x12 array girişi ve görselleştirme
+```
+Adaptif_kalip_v4_*            v4.4 firmware (yedek)
+Adaptif_Kalip_blue_pill_*    F103 RS485 koprusu (+ Tester_UI/ui_v2.0.py)
+Adaptif_kalip_v5_U2/U3       v5.1 firmware (guncel)
+Calibration_U2/U3            donanim test/kalibrasyon firmware'i
+UI_v2.0_QML/                 PySide6 + QML arayuz (ui_v2.0 branch)
+Web_UI/                      legacy Flask + React arayuz
+CLAUDE.md / REVIEW.md        Claude Code bellegi + review kriterleri
+CLAUDE_CODE_REHBERI.md       yonetim/kurulum rehberi
+V5_MIMARI_NOTU.md            v5.1 mimari + protokol
+KALIBRASYON_REHBERI.md       kalibrasyon kullanim kilavuzu
+```
 
-## Kullanım Senaryosu
+## Git
 
-1. **Başlangıç**:
-   - Bilgisayar 12x12 pozisyon array'i hazırlar (mm cinsinden integer değerler)
-   - Master'a array gönderilir
-
-2. **Dağıtım**:
-   - Master array'i 16 parçaya böler
-   - Her parça (3x3) ilgili slave'e gönderilir
-
-3. **Kontrol**:
-   - Her slave kendi 3x3 array'ini alır
-   - 9 motoru sırayla hedef pozisyonlara sürer
-   - Encoder ile pozisyon kontrolü yapar
-
-4. **Geri Bildirim**:
-   - Slave'ler pozisyon durumunu master'a bildirir
-   - Master bilgisayara durum raporu gönderir
-
-## Notlar
-
-- Tüm sistemde RS485 baud rate **9600** olmalıdır
-- Slave ID'ler 1-16 arası olmalıdır (Flash memory'de saklanır)
-- Motor pozisyonları 0-600mm arası olmalıdır
-- Array indeksleme 0'dan başlar (0-11 arası)
-- **Slave ID Flash Memory**: Son sector (Sector 11) kullanılır
-- **ID Atama**: `SETID:XX` komutu ile master üzerinden yapılır
-- **ID Kalıcılık**: Power cycle'dan sonra da korunur
-
-## Lisans
-
-Bu proje özel bir endüstriyel uygulama için geliştirilmiştir.
-
+Remote: `https://github.com/beraT-T/Kinetic_Molding_System.git`. Branch'ler: `main` (firmware + legacy
+UI + dokümanlar), `ui_v2.0` (QML arayüz). v4.4'e dokunulmaz. Takılı kalırsa: `rm -f .git/index.lock`.
