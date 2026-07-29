@@ -25,8 +25,13 @@ Item {
         spacing: 16
 
         // ---------- SOL: STL + 3D + terminal ----------
+        // Sabit genislikli kontrol sutunu. NOT: RowLayout icinde ic-ice
+        // ColumnLayout sadece preferredWidth ile genisligini tutmaz (fillWidth
+        // kardesini sifira sikistirir); min=max ile sabitlenir.
         ColumnLayout {
             Layout.preferredWidth: 520
+            Layout.minimumWidth: 520
+            Layout.maximumWidth: 520
             Layout.fillHeight: true
             spacing: 14
 

@@ -111,10 +111,12 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 430
+                Layout.fillHeight: true
+                Layout.minimumHeight: 430
                 radius: 12
                 color: Theme.panel
                 border.color: Theme.border
+                clip: true
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
@@ -165,34 +167,53 @@ Item {
                                 border.color: Theme.border
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 8
-                                    spacing: 4
-                                    Text { text: "Motor " + (index + 1); color: Theme.textDim; font.pixelSize: 12; font.bold: true
+                                    anchors.margins: 10
+                                    spacing: 6
+                                    Text { text: "Motor " + (index + 1); color: Theme.text; font.pixelSize: 14; font.bold: true
                                         Layout.alignment: Qt.AlignHCenter }
-                                    Slider {
-                                        id: s
+                                    // dikey ortalama icin ust/alt esnek bosluk
+                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
+                                    // Hedef mm girisi: degeri yaz + Enter ile gonder (MOV).
+                                    // +/- stepper sadece degeri ayarlar, gondermez (kazara hareket yok).
+                                    SpinBox {
+                                        id: sp
                                         Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        orientation: Qt.Vertical
-                                        from: 0; to: 600; value: 0
-                                        Layout.alignment: Qt.AlignHCenter
-                                        onPressedChanged: if (!pressed && app.connected)
-                                            app.moveMotor(app.currentSlaveId, index + 1, Math.round(value))
+                                        from: 0; to: 600; stepSize: 10; editable: true
+                                        value: 0
+                                        font.pixelSize: 18
+                                        contentItem: TextInput {
+                                            text: sp.displayText
+                                            color: Theme.accent2
+                                            font.pixelSize: 18
+                                            font.bold: true
+                                            horizontalAlignment: Qt.AlignHCenter
+                                            verticalAlignment: Qt.AlignVCenter
+                                            readOnly: !sp.editable
+                                            validator: sp.validator
+                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                            selectByMouse: true
+                                            onAccepted: {
+                                                sp.value = sp.valueFromText(text, sp.locale)
+                                                if (app.connected)
+                                                    app.moveMotor(app.currentSlaveId, index + 1, sp.value)
+                                            }
+                                        }
                                         Connections {
                                             target: page
-                                            function onApplyVals(arr) { s.value = arr[index] }
+                                            function onApplyVals(arr) { sp.value = arr[index] }
                                         }
                                     }
-                                    Text { text: Math.round(s.value) + " mm"; color: Theme.accent2; font.bold: true; font.pixelSize: 13
+                                    Text { text: "mm  ·  yaz + Enter"; color: Theme.textDim; font.pixelSize: 10
                                         Layout.alignment: Qt.AlignHCenter }
+                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
                                     Button {
                                         text: "Home"
                                         Layout.fillWidth: true
                                         enabled: app.connected
-                                        onClicked: { app.homeMotor(app.currentSlaveId, index + 1); s.value = 0 }
-                                        background: Rectangle { radius: 5; color: Theme.orange; opacity: parent.enabled?0.85:0.3 }
-                                        contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 10; font.bold: true
-                                            horizontalAlignment: Text.AlignHCenter; topPadding:4; bottomPadding:4 }
+                                        onClicked: { app.homeMotor(app.currentSlaveId, index + 1); sp.value = 0 }
+                                        background: Rectangle { radius: 6; color: Theme.orange; opacity: parent.enabled?0.9:0.3 }
+                                        contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 12; font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter; topPadding:6; bottomPadding:6 }
                                     }
                                 }
                             }
@@ -203,7 +224,7 @@ Item {
 
             Terminal {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.preferredHeight: 280
                 logModel: page.logModel
             }
         }
