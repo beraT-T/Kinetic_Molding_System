@@ -8,6 +8,8 @@ Calistirma:
     python3 main.py
 Tam ekran (kiosk) icin:
     python3 main.py --fullscreen
+Donanimsiz gelistirme (sahte baglan/tara/STAT) icin:
+    python3 main.py --demo
 """
 import os
 import sys
@@ -31,7 +33,9 @@ def main():
     app.setApplicationName("Adaptif Kalip UI v2.0")
 
     engine = QQmlApplicationEngine()
-    controller = Controller()
+    # Demo modu artik arayuz dugmesiyle degil, komut satiri bayragiyla acilir
+    # (operator gormez; gelistirirken Mac'te donanimsiz test icin kullanilir).
+    controller = Controller(demo="--demo" in sys.argv)
     engine.rootContext().setContextProperty("app", controller)
     engine.rootContext().setContextProperty(
         "startFullscreen", "--fullscreen" in sys.argv
