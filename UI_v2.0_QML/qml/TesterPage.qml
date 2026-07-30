@@ -6,21 +6,24 @@ import "Theme.js" as Theme
 Item {
     id: page
     property var logModel
-    signal applyVals(var arr)     // 9 deger -> sliderlara uygula
+    signal applyVals(var arr)       // 9 hedef mm -> spinbox
+    signal applyStates(var letters) // 9 durum harfi -> durum cipi
 
     function fill(v) { var a = []; for (var i = 0; i < 9; i++) a.push(v); return a }
 
-    // STAT cevabi gelince, secili slave ise sliderlari guncelle
+    // STAT cevabi gelince, secili modul ise spinbox + durum cipini guncelle
     Connections {
         target: app
         function onStatusReceived(sid, toks) {
             if (sid !== app.currentSlaveId) return
-            var arr = []
+            var nums = [], letters = []
             for (var i = 0; i < 9; i++) {
                 var t = (i < toks.length) ? toks[i] : "I0"
-                arr.push(parseInt(t.substring(1)) || 0)
+                letters.push(t.substring(0, 1))
+                nums.push(parseInt(t.substring(1)) || 0)
             }
-            page.applyVals(arr)
+            page.applyVals(nums)
+            page.applyStates(letters)
         }
     }
 
@@ -36,30 +39,32 @@ Item {
         anchors.margins: 16
         spacing: 16
 
-        // ---------- SOL: 16 slave panosu ----------
+        // ---------- SOL: 16 modul panosu ----------
         Rectangle {
-            Layout.preferredWidth: 360
+            Layout.preferredWidth: 380
+            Layout.minimumWidth: 380
+            Layout.maximumWidth: 380
             Layout.fillHeight: true
-            radius: 12
+            radius: Theme.radius
             color: Theme.panel
             border.color: Theme.border
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 14
-                spacing: 12
-                Text { text: "Moduller (16 Slave)"; color: Theme.text; font.bold: true; font.pixelSize: 15 }
+                spacing: Theme.gapMin
+                Text { text: "Moduller"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                 GridLayout {
                     Layout.fillWidth: true
                     columns: 4
-                    rowSpacing: 8; columnSpacing: 8
+                    rowSpacing: Theme.gapMin; columnSpacing: Theme.gapMin
                     Repeater {
                         model: 16
                         delegate: Rectangle {
                             id: cell
                             required property int index
                             Layout.fillWidth: true
-                            height: 60
-                            radius: 8
+                            Layout.preferredHeight: Theme.touchMin + 8
+                            radius: Theme.radiusSm
                             property int sid: index + 1
                             property bool sel: app.currentSlaveId === sid
                             property bool online: app.activeSlaves.indexOf(sid) >= 0
@@ -70,20 +75,20 @@ Item {
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 2
-                                Text { text: "ID " + cell.sid; color: Theme.text; font.bold: true; font.pixelSize: 13
+                                Text { text: "Modul " + cell.sid; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody
                                     anchors.horizontalCenter: parent.horizontalCenter }
-                                Text { text: cell.online ? "online" : "offline"
-                                    color: cell.online ? Theme.green : Theme.textDim; font.pixelSize: 10
+                                Text { text: cell.online ? "bagli" : "bagli degil"
+                                    color: cell.online ? Theme.green : Theme.textDim; font.pixelSize: Theme.fsSmall
                                     anchors.horizontalCenter: parent.horizontalCenter }
                             }
-                            MouseArea { anchors.fill: parent; onClicked: app.currentSlaveId = cell.sid }
+                            TapHandler { onTapped: app.currentSlaveId = cell.sid }
                         }
                     }
                 }
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "Canli durum"; color: Theme.textDim; font.pixelSize: 12 }
+                    Text { text: "Canli Durum"; color: Theme.textDim; font.pixelSize: Theme.fsBody }
                     Item { Layout.fillWidth: true }
                     Switch { id: livesw }
                 }
@@ -91,13 +96,13 @@ Item {
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    radius: 8
+                    radius: Theme.radiusSm
                     color: Theme.panelHi
                     Column {
                         anchors.fill: parent; anchors.margins: 10; spacing: 4
-                        Text { text: "Klavuz"; color: Theme.text; font.bold: true; font.pixelSize: 12 }
-                        Text { text: "• Soldan modul sec\n• 3x3 grid'den motorlari sur\n• 'Canli durum' STAT poll eder\n• Terminalden ham komut girilebilir"
-                            color: Theme.textDim; font.pixelSize: 11; lineHeight: 1.3 }
+                        Text { text: "Klavuz"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
+                        Text { text: "• Soldan modul sec\n• Motor kutusuna deger yaz + Enter\n• 'Canli Durum' surekli izler\n• Terminalden ham komut girilebilir"
+                            color: Theme.textDim; font.pixelSize: Theme.fsSmall; lineHeight: 1.3 }
                     }
                 }
             }
@@ -113,41 +118,33 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumHeight: 430
-                radius: 12
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 clip: true
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: 12
+                    spacing: Theme.gapMin
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "Modul Kontrol: ID " + app.currentSlaveId; color: Theme.text; font.bold: true; font.pixelSize: 16 }
+                        spacing: Theme.gapMin
+                        Text { text: "Modul " + app.currentSlaveId; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                         Item { Layout.fillWidth: true }
-                        Button {
-                            text: "Tumunu Sifirla"
+                        TouchButton {
+                            text: "Tumunu Sifirla"; color: Theme.orange
                             enabled: app.connected
                             onClicked: { app.allToValue(app.currentSlaveId, 0); page.applyVals(page.fill(0)) }
-                            background: Rectangle { radius: 6; color: Theme.orange; opacity: parent.enabled?1:0.4 }
-                            contentItem: Text { text: parent.text; color: "white"; font.bold: true; font.pixelSize: 12
-                                leftPadding:12; rightPadding:12; topPadding:7; bottomPadding:7 }
                         }
-                        Button {
-                            text: "Test 300mm"
+                        TouchButton {
+                            text: "Test 300 mm"; color: Theme.accent
                             enabled: app.connected
                             onClicked: { app.allToValue(app.currentSlaveId, 300); page.applyVals(page.fill(300)) }
-                            background: Rectangle { radius: 6; color: Theme.accent; opacity: parent.enabled?1:0.4 }
-                            contentItem: Text { text: parent.text; color: "white"; font.bold: true; font.pixelSize: 12
-                                leftPadding:12; rightPadding:12; topPadding:7; bottomPadding:7 }
                         }
-                        Button {
-                            text: "Home Hepsi"
+                        TouchButton {
+                            text: "Home Hepsi"; color: Theme.green
                             enabled: app.connected
                             onClicked: { app.homeSlave(app.currentSlaveId); page.applyVals(page.fill(0)) }
-                            background: Rectangle { radius: 6; color: Theme.green; opacity: parent.enabled?1:0.4 }
-                            contentItem: Text { text: parent.text; color: "white"; font.bold: true; font.pixelSize: 12
-                                leftPadding:12; rightPadding:12; topPadding:7; bottomPadding:7 }
                         }
                     }
 
@@ -155,36 +152,61 @@ Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         columns: 3
-                        rowSpacing: 12; columnSpacing: 12
+                        rowSpacing: Theme.gapMin; columnSpacing: Theme.gapMin
                         Repeater {
                             model: 9
                             delegate: Rectangle {
+                                id: mcell
                                 required property int index
+                                property string st: "I"
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                radius: 10
+                                radius: Theme.radiusSm
                                 color: Theme.panelHi
-                                border.color: Theme.border
+                                border.color: mcell.st === "F" ? Theme.red : Theme.border
+                                border.width: mcell.st === "F" ? 3 : 1
+
+                                Connections {
+                                    target: page
+                                    function onApplyStates(letters) { mcell.st = letters[index] || "I" }
+                                }
+
                                 ColumnLayout {
                                     anchors.fill: parent
                                     anchors.margins: 10
                                     spacing: 6
-                                    Text { text: "Motor " + (index + 1); color: Theme.text; font.pixelSize: 14; font.bold: true
-                                        Layout.alignment: Qt.AlignHCenter }
-                                    // dikey ortalama icin ust/alt esnek bosluk
+
+                                    // baslik + durum cipi
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text { text: "Motor " + (index + 1); color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
+                                        Item { Layout.fillWidth: true }
+                                        Rectangle {
+                                            radius: Theme.radiusSm
+                                            implicitHeight: 26
+                                            implicitWidth: stLbl.implicitWidth + 18
+                                            color: Theme.stateColor(mcell.st)
+                                            Text { id: stLbl; anchors.centerIn: parent
+                                                text: Theme.stateLabel(mcell.st)
+                                                color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall }
+                                        }
+                                    }
+
                                     Item { Layout.fillHeight: true; Layout.fillWidth: true }
+
                                     // Hedef mm girisi: degeri yaz + Enter ile gonder (MOV).
                                     // +/- stepper sadece degeri ayarlar, gondermez (kazara hareket yok).
                                     SpinBox {
                                         id: sp
                                         Layout.fillWidth: true
+                                        Layout.preferredHeight: Theme.inputHeight
                                         from: 0; to: 600; stepSize: 10; editable: true
                                         value: 0
-                                        font.pixelSize: 18
+                                        font.pixelSize: Theme.fsValue
                                         contentItem: TextInput {
                                             text: sp.displayText
                                             color: Theme.accent2
-                                            font.pixelSize: 18
+                                            font.pixelSize: Theme.fsValue
                                             font.bold: true
                                             horizontalAlignment: Qt.AlignHCenter
                                             verticalAlignment: Qt.AlignVCenter
@@ -203,17 +225,20 @@ Item {
                                             function onApplyVals(arr) { sp.value = arr[index] }
                                         }
                                     }
-                                    Text { text: "mm  ·  yaz + Enter"; color: Theme.textDim; font.pixelSize: 10
+                                    Text { text: "mm  ·  yaz + Enter"; color: Theme.textDim; font.pixelSize: Theme.fsSmall
                                         Layout.alignment: Qt.AlignHCenter }
+
                                     Item { Layout.fillHeight: true; Layout.fillWidth: true }
+
                                     Button {
                                         text: "Home"
                                         Layout.fillWidth: true
+                                        implicitHeight: Theme.touchMin
                                         enabled: app.connected
                                         onClicked: { app.homeMotor(app.currentSlaveId, index + 1); sp.value = 0 }
-                                        background: Rectangle { radius: 6; color: Theme.orange; opacity: parent.enabled?0.9:0.3 }
-                                        contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 12; font.bold: true
-                                            horizontalAlignment: Text.AlignHCenter; topPadding:6; bottomPadding:6 }
+                                        background: Rectangle { radius: Theme.radiusSm; color: Theme.orange; opacity: parent.enabled ? 0.9 : 0.3 }
+                                        contentItem: Text { text: parent.text; color: "white"; font.pixelSize: Theme.fsButton; font.bold: true
+                                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                                     }
                                 }
                             }
@@ -224,7 +249,7 @@ Item {
 
             Terminal {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 280
+                Layout.preferredHeight: 176
                 logModel: page.logModel
             }
         }

@@ -1,22 +1,18 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import "Theme.js" as Theme
 
 Item {
     id: page
     property var logModel
-    property string stlName: ""
+    signal stlRequested()      // Main.qml StlPicker'i acar
 
-    FileDialog {
-        id: fileDialog
-        title: "STL dosyasi sec"
-        nameFilters: ["STL dosyalari (*.stl)"]
-        onAccepted: {
-            page.stlName = selectedFile.toString().split("/").pop()
-            app.loadStl(selectedFile)
-        }
+    // yuklu STL adi (app.stlFileUrl'den turetilir)
+    function stlName() {
+        var u = app.stlFileUrl.toString()
+        if (!u.length) return ""
+        return decodeURIComponent(u.split("/").pop())
     }
 
     RowLayout {
@@ -38,39 +34,37 @@ Item {
             // dosya
             Rectangle {
                 Layout.fillWidth: true
-                height: 92
-                radius: 12
+                Layout.preferredHeight: Theme.btnHeight + 28
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 RowLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: 12
+                    spacing: Theme.gapMin
                     Column {
                         Layout.fillWidth: true
                         spacing: 4
-                        Text { text: "STL Modeli"; color: Theme.text; font.bold: true; font.pixelSize: 14 }
+                        Text { text: "STL Modeli"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
                         Text {
-                            text: page.stlName.length ? page.stlName : "Dosya secilmedi"
-                            color: page.stlName.length ? Theme.accent2 : Theme.textDim
-                            font.pixelSize: 12; elide: Text.ElideMiddle; width: 300
+                            text: page.stlName().length ? page.stlName() : "Dosya secilmedi"
+                            color: page.stlName().length ? Theme.accent2 : Theme.textDim
+                            font.pixelSize: Theme.fsSmall; elide: Text.ElideMiddle; width: 280
                         }
                     }
-                    Button {
+                    TouchButton {
                         text: "STL Sec + Hesapla"
-                        onClicked: fileDialog.open()
-                        background: Rectangle { radius: 8; color: Theme.accent }
-                        contentItem: Text { text: parent.text; color: "white"; font.bold: true; font.pixelSize: 13
-                            leftPadding:14; rightPadding:14; topPadding:10; bottomPadding:10 }
+                        color: Theme.accent
+                        onClicked: page.stlRequested()
                     }
                 }
             }
 
-            // 3D
+            // 3D (STL / Kalip gorunumu Surface3D icinde)
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 320
-                radius: 12
+                Layout.preferredHeight: 340
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 clip: true
@@ -78,7 +72,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 10
                     spacing: 6
-                    Text { text: "3D Onizleme (mold yuzeyi)"; color: Theme.textDim; font.bold: true; font.pixelSize: 12 }
+                    Text { text: "3D Onizleme"; color: Theme.textDim; font.bold: true; font.pixelSize: Theme.fsSmall }
                     Surface3D {
                         width: parent.width
                         height: parent.height - 24
@@ -103,8 +97,8 @@ Item {
             // istatistik seridi
             Rectangle {
                 Layout.fillWidth: true
-                height: 64
-                radius: 12
+                Layout.preferredHeight: 68
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 RowLayout {
@@ -119,8 +113,8 @@ Item {
                             { k: "Std",  v: app.stats && app.stats.std  !== undefined ? app.stats.std  + " mm" : "—" }
                         ]
                         delegate: Column {
-                            Text { text: modelData.k; color: Theme.textDim; font.pixelSize: 11 }
-                            Text { text: modelData.v; color: Theme.text; font.bold: true; font.pixelSize: 18 }
+                            Text { text: modelData.k; color: Theme.textDim; font.pixelSize: Theme.fsSmall }
+                            Text { text: modelData.v; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                         }
                     }
                 }
@@ -130,14 +124,14 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                radius: 12
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 Column {
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: 8
-                    Text { text: "12 × 12 Pozisyon Haritasi (144 motor)"; color: Theme.text; font.bold: true; font.pixelSize: 13 }
+                    Text { text: "12 × 12 Pozisyon Haritasi (144 motor)"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
                     Heatmap {
                         width: parent.width
                         height: parent.height - 28
@@ -148,42 +142,44 @@ Item {
             // aksiyon cubugu
             Rectangle {
                 Layout.fillWidth: true
-                height: 120
-                radius: 12
+                Layout.preferredHeight: Theme.inputHeight + Theme.btnHeight + 48
+                radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
                 GridLayout {
                     anchors.fill: parent
                     anchors.margins: 14
                     columns: 4
-                    columnSpacing: 10
-                    rowSpacing: 10
+                    columnSpacing: Theme.gapMin
+                    rowSpacing: Theme.gapMin
 
                     RowLayout {
                         Layout.columnSpan: 4
-                        spacing: 10
-                        Text { text: "Hedef Slave:"; color: Theme.textDim; font.pixelSize: 13 }
+                        spacing: Theme.gapMin
+                        Text { text: "Hedef Modul:"; color: Theme.textDim; font.pixelSize: Theme.fsBody }
                         SpinBox {
                             from: 1; to: 16
                             value: app.currentSlaveId
                             onValueModified: app.currentSlaveId = value
+                            Layout.preferredHeight: Theme.inputHeight
+                            font.pixelSize: Theme.fsButton
                         }
                         Text {
-                            text: "Aktif: [" + app.activeSlaves.join(", ") + "]"
-                            color: Theme.textDim; font.pixelSize: 12
+                            text: "Bagli: [" + app.activeSlaves.join(", ") + "]"
+                            color: Theme.textDim; font.pixelSize: Theme.fsSmall
                         }
                     }
 
-                    ActionButton { text: "Bu Slave'e Gonder (ARR)"; color: Theme.accent
+                    ActionButton { text: "Secili Module Uygula"; color: Theme.accent
                         enabled: app.connected && app.gridData.length > 0
                         onClicked: app.sendArrayToSlave(app.currentSlaveId) }
-                    ActionButton { text: "Tum Aktiflere Gonder"; color: Theme.purple
+                    ActionButton { text: "Tum Modullere Uygula"; color: Theme.purple
                         enabled: app.connected && app.gridData.length > 0
                         onClicked: app.sendArrayActive() }
-                    ActionButton { text: "Slave Home"; color: Theme.orange
+                    ActionButton { text: "Home"; color: Theme.orange
                         enabled: app.connected
                         onClicked: app.homeSlave(app.currentSlaveId) }
-                    ActionButton { text: "Durum (STAT)"; color: Theme.green
+                    ActionButton { text: "Basla"; color: Theme.green
                         enabled: app.connected
                         onClicked: app.requestStatus(app.currentSlaveId) }
                 }
