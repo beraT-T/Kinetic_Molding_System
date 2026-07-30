@@ -97,6 +97,38 @@ home bitmeden hareket komutu göndermek sıfır referansını bozar.
   Ayrıntı: `UI_v2.0_QML/README.md`. (Genelde `ui_v2.0` git branch'inde tutulur.)
 - STL interpolasyonu: trimesh + scipy `LinearNDInterpolator`, merkez 300mm'ye offset, 0–600 clip.
 
+## Raspberry Pi dağıtımı (UI_v2.0_QML)
+
+Arayüz gerçek panelde çalışıyor: **Pi 5, Raspberry Pi OS Lite 64-bit (Trixie), PySide6 6.11.1,
+15.6" 1080p dokunmatik**, `cage` (Wayland kiosk compositor) altında fullscreen.
+
+- **Pi:** `berat@192.168.88.244` (parolasız SSH anahtarı). Repo: `/home/berat/Kinetic_Molding_System`,
+  branch `ui_v2.0`. venv: `UI_v2.0_QML/venv`. Log: `/home/berat/kalip.log`.
+- **Kiosk:** tty1 otomatik giriş → `/usr/local/bin/kalip` → `cage -- python3 main.py --fullscreen`.
+  Yeniden başlat: `sudo systemctl restart getty@tty1` (parolasız izinli).
+- **Deploy akışı:** push → Pi'de `git pull --ff-only` → **offscreen QML kontrolu**
+  (`QT_QPA_PLATFORM=offscreen venv/bin/python3 main.py`, kiosk'a dokunmadan sozdizimi/binding/
+  traceback yakalar; Quick3D "isApiRhiBased ... not functional" BEKLENEN) → kiosk restart → `kalip.log`.
+  Kolaylik: `UI_v2.0_QML/deploy_pi.sh` (host'u `PI_HOST` env'den okur).
+
+### Kritik ortam bulguları (kaybolmasın)
+1. pip PySide6 wheel'inde `libQt6EglFsKmsGbmSupport.so.6` YOK → **eglfs kullanılamaz**;
+   çözüm `cage` + Wayland.
+2. systemd + `PAMName=login` ekran verir ama **giriş cihazlarını vermez** (dokunmatik ölü) →
+   çalışan yol tty1 otomatik giriş + başlatıcıdan çağırma.
+3. `QT_QPA_PLATFORM` **elle ayarlanmaz** (cage `WAYLAND_DISPLAY` verir, Qt eklentiyi kendi seçer);
+   "wayland" zorlanınca dokunmatik çalışmadı.
+4. Raspberry Pi OS **Bookworm kullanılamaz** (glibc 2.36; PySide6 6.8.1+ `manylinux_2_39`/glibc≥2.39).
+   **Trixie şart.**
+5. **Hover yok** (parmak) → hoverEnabled/ToolTip/onEntered ölü; tap tabanlı eşdeğer kullan.
+
+### Uzaktan doğrulama sınırı (donanım-döngüsü gibi)
+SSH ile DOĞRULANABİLİR: QML yükleniyor mu, import/traceback, binding uyarısı, uygulama ayakta mı.
+DOĞRULANAMAZ (kullanıcıya bırak, "PANELDE TEST" listesi ver): görsel yerleşim/taşma, dokunma isabeti,
+tap davranışı, 3D render, akıcılık, punto okunabilirliği.
+**GÜVENLİK:** donanıma hareket komutu (ARR/ALL/MOV/HOME) gönderme; seri gerekiyorsa yalnız PING/STAT,
+o da kullanıcıya sorarak. config.txt/sudoers/systemd/venv/PySide6 sürümüne dokunma. Kiosk'u ayakta bırak.
+
 ## Derleme / yükleme
 
 - PlatformIO: `pio run -e genericSTM32F401RC` (build), `pio run -t upload` (ST-Link ile yükle),
