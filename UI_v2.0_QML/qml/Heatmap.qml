@@ -4,6 +4,11 @@ import "Theme.js" as Theme
 Item {
     id: root
     property int gridN: 12
+    property int selR: -1        // secili hucre (dokunulan) - kalici
+    property int selC: -1
+
+    readonly property real cw: width / gridN
+    readonly property real ch: height / gridN
 
     Canvas {
         id: canvas
@@ -34,7 +39,7 @@ Item {
                 ctx.beginPath(); ctx.moveTo(i * cw, 0); ctx.lineTo(i * cw, height); ctx.stroke()
                 ctx.beginPath(); ctx.moveTo(0, i * ch); ctx.lineTo(width, i * ch); ctx.stroke()
             }
-            // slave sinirlari (3x3 modul)
+            // modul (3x3) sinirlari
             ctx.strokeStyle = "rgba(255,255,255,0.45)"
             ctx.lineWidth = 2
             for (var k = 0; k <= 4; k++) {
@@ -51,41 +56,72 @@ Item {
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
 
-    // hover bilgisi
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        onPositionChanged: {
-            var n = root.gridN
-            var c = Math.floor(mouseX / (width / n))
-            var r = Math.floor(mouseY / (height / n))
-            if (c < 0 || c >= n || r < 0 || r >= n) { tip.visible = false; return }
-            var idx = r * n + c
-            var g = app.gridData
-            var slaveRow = Math.floor(r / 3), slaveCol = Math.floor(c / 3)
-            var sid = slaveRow * 4 + slaveCol + 1
-            tip.text = "Satir " + r + ", Sutun " + c + "  ·  Slave " + sid +
-                       "\n" + (g.length > idx ? g[idx] + " mm" : "—")
-            tip.x = Math.min(mouseX + 12, width - tip.width - 4)
-            tip.y = Math.min(mouseY + 12, height - tip.height - 4)
-            tip.visible = g.length > idx
-        }
-        onExited: tip.visible = false
+    // ---- secili hucre isareti (overlay - canvas repaint yok) ----
+    Rectangle {
+        visible: root.selR >= 0 && root.selC >= 0
+        x: root.selC * root.cw
+        y: root.selR * root.ch
+        width: root.cw
+        height: root.ch
+        color: "transparent"
+        border.color: "white"
+        border.width: 3
+        radius: 2
     }
 
+    // ---- dokunma: hucre sec (hover yok, parmakla tap) ----
+    TapHandler {
+        onTapped: function(ep) {
+            var n = root.gridN
+            var c = Math.floor(ep.position.x / (width / n))
+            var r = Math.floor(ep.position.y / (height / n))
+            if (c < 0 || c >= n || r < 0 || r >= n) return
+            if (app.gridData.length <= r * n + c) return
+            root.selR = r
+            root.selC = c
+        }
+    }
+
+    // ---- bilgi etiketi: dokunulan hucrenin USTUNDE (parmak alttadir) ----
     Rectangle {
         id: tip
-        property alias text: tipText.text
-        visible: false
-        width: tipText.width + 16
-        height: tipText.height + 12
-        color: "#000000cc"
+        visible: root.selR >= 0 && root.selC >= 0 && app.gridData.length > 0
+        color: "#e6000000"   // QML 8-hane hex = #AARRGGBB; %90 siyah
         border.color: Theme.accent
-        radius: 6
+        border.width: 2
+        radius: Theme.radiusSm
+        width: tipText.implicitWidth + 20
+        height: tipText.implicitHeight + 14
+
+        // yatayda dokunulan sutunla ortali, ekran icine clamp
+        x: {
+            if (root.selC < 0) return 0
+            var cx = root.selC * root.cw + root.cw / 2 - width / 2
+            return Math.max(2, Math.min(cx, root.width - width - 2))
+        }
+        // hucrenin ustunde; en ust satirda alta cevir (flip)
+        y: {
+            if (root.selR < 0) return 0
+            var above = root.selR * root.ch - height - 8
+            if (above >= 2) return above
+            return root.selR * root.ch + root.ch + 8   // flip: hucrenin altina
+        }
+
         Text {
             id: tipText
             anchors.centerIn: parent
-            color: "white"; font.pixelSize: 12; font.family: "monospace"
+            horizontalAlignment: Text.AlignHCenter
+            font.pixelSize: Theme.fsTip
+            font.family: "monospace"
+            color: "white"
+            text: {
+                if (root.selR < 0 || root.selC < 0) return ""
+                var idx = root.selR * root.gridN + root.selC
+                var slaveRow = Math.floor(root.selR / 3), slaveCol = Math.floor(root.selC / 3)
+                var sid = slaveRow * 4 + slaveCol + 1
+                var mm = app.gridData.length > idx ? app.gridData[idx] + " mm" : "—"
+                return "Satir " + root.selR + " · Sutun " + root.selC + "  ·  Modul " + sid + "\n" + mm
+            }
         }
     }
 }

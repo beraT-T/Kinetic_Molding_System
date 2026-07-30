@@ -3,6 +3,9 @@ import QtQuick3D
 import QtQuick3D.Helpers
 import "Theme.js" as Theme
 
+// NOT: Ham STL mesh gorunumu (RuntimeLoader/AssetUtils) ERTELENDI - sonraki tur.
+// Bu bilesen simdilik yalniz interpolasyon sonucu kalip yuzeyini (144 pin) cizer.
+// controller.stlFileUrl backend'de hazir; STL gorunumu tekrar eklenecegi zaman kullanilacak.
 Item {
     id: root
     property real spacing: 30
@@ -28,19 +31,10 @@ Item {
             eulerRotation.x: -32
         }
 
-        OrbitCameraController {
-            origin: originNode
-            camera: cam
-        }
+        OrbitCameraController { origin: originNode; camera: cam }
 
-        DirectionalLight {
-            eulerRotation: Qt.vector3d(-45, -30, 0)
-            brightness: 1.0
-        }
-        DirectionalLight {
-            eulerRotation: Qt.vector3d(45, 140, 0)
-            brightness: 0.4
-        }
+        DirectionalLight { eulerRotation: Qt.vector3d(-45, -30, 0); brightness: 1.0 }
+        DirectionalLight { eulerRotation: Qt.vector3d(45, 140, 0); brightness: 0.4 }
 
         // 144 pin (motor) - yukseklik = mm degeri
         Repeater3D {
@@ -55,23 +49,17 @@ Item {
                 position: Qt.vector3d((cc - 5.5) * root.spacing, h / 2, (rr - 5.5) * root.spacing)
                 scale: Qt.vector3d(root.footprint / 100, h / 100, root.footprint / 100)
                 materials: [
-                    PrincipledMaterial {
-                        baseColor: Theme.heat(val, 600)
-                        roughness: 0.5
-                        metalness: 0.0
-                    }
+                    PrincipledMaterial { baseColor: Theme.heat(val, 600); roughness: 0.5; metalness: 0.0 }
                 ]
             }
         }
     }
 
-    // model yokken bilgi
     Text {
         anchors.centerIn: parent
         visible: app.gridData.length === 0
-        text: "STL yukleyip 'Hesapla' deyince\n3D yuzey burada gorunur"
-        color: Theme.textDim
-        font.pixelSize: 13
+        text: "STL yukleyip 'Hesapla' deyince\nkalip yuzeyi burada gorunur"
+        color: Theme.textDim; font.pixelSize: Theme.fsBody
         horizontalAlignment: Text.AlignHCenter
     }
 
@@ -79,9 +67,8 @@ Item {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 6
-        text: "Surukle: dondur · Tekerlek: yakinlas"
-        color: Theme.textDim
-        font.pixelSize: 10
         visible: app.gridData.length > 0
+        text: "Surukle: dondur · Iki parmak: yakinlas"
+        color: Theme.textDim; font.pixelSize: Theme.fsSmall
     }
 }
