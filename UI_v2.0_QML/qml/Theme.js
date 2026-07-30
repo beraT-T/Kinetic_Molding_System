@@ -23,7 +23,6 @@ var btnHeight   = 64;   // birincil aksiyon buton yuksekligi
 var inputHeight = 56;   // spinbox / metin girisi yuksekligi
 var stepperSize = 56;   // spinbox +/- stepper min kenar
 var gapMin      = 12;   // etkilesimli ogeler arasi min bosluk
-var rowHeight   = 64;   // liste satiri (StlPicker) yuksekligi
 var radius      = 12;   // panel kose yaricapi
 var radiusSm    = 8;    // kucuk oge kose yaricapi
 

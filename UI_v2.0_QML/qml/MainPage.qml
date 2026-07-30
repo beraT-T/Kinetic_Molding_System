@@ -1,18 +1,26 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import "Theme.js" as Theme
 
 Item {
     id: page
     property var logModel
-    signal stlRequested()      // Main.qml StlPicker'i acar
 
     // yuklu STL adi (app.stlFileUrl'den turetilir)
     function stlName() {
         var u = app.stlFileUrl.toString()
         if (!u.length) return ""
         return decodeURIComponent(u.split("/").pop())
+    }
+
+    // Native QML dosya secici (kullanici tercihi)
+    FileDialog {
+        id: fileDialog
+        title: "STL dosyasi sec"
+        nameFilters: ["STL dosyalari (*.stl)"]
+        onAccepted: app.loadStl(selectedFile)
     }
 
     RowLayout {
@@ -55,7 +63,7 @@ Item {
                     TouchButton {
                         text: "STL Sec + Hesapla"
                         color: Theme.accent
-                        onClicked: page.stlRequested()
+                        onClicked: fileDialog.open()
                     }
                 }
             }

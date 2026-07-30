@@ -74,14 +74,8 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: 0
-            MainPage   { logModel: logModel; onStlRequested: stlPicker.openAt("") }
+            MainPage   { logModel: logModel }
             TesterPage { logModel: logModel }
         }
-    }
-
-    // ---- tam ekran STL secici (tum pencereyi kaplar) ----
-    StlPicker {
-        id: stlPicker
-        onPicked: function(path) { app.loadStl(path) }
     }
 }

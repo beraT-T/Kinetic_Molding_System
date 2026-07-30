@@ -80,53 +80,6 @@ class Controller(QObject):
     def _get_stl_url(self): return self._stl_url
     stlFileUrl = Property(QUrl, _get_stl_url, notify=stlUrlChanged)
 
-    # ================= STL DOSYA GEZGINI (StlPicker) =================
-    @Slot(result="QVariantList")
-    def stlSearchDirs(self):
-        """Hizli erisim klasorleri: ev, ~/stl, uygulama dizini."""
-        home = os.path.expanduser("~")
-        app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cand = [("Ev", home), ("STL", os.path.join(home, "stl")), ("Uygulama", app_dir)]
-        out = []
-        for name, p in cand:
-            if os.path.isdir(p):
-                out.append({"name": name, "path": p})
-        return out
-
-    @Slot(str, result=str)
-    def parentDir(self, directory):
-        return os.path.dirname(directory.rstrip("/")) or "/"
-
-    @Slot(str, result="QVariantList")
-    def listStlFiles(self, directory):
-        """Verilen klasordeki alt klasorleri + .stl dosyalarini dondur.
-        Her oge: {name, path, isDir, size, mtime}. QML tarafinda FolderListModel yok."""
-        if not directory or not os.path.isdir(directory):
-            directory = os.path.expanduser("~")
-        dirs, files = [], []
-        try:
-            for entry in os.scandir(directory):
-                try:
-                    if entry.name.startswith("."):
-                        continue
-                    if entry.is_dir():
-                        dirs.append({"name": entry.name, "path": entry.path,
-                                     "isDir": True, "size": "", "mtime": ""})
-                    elif entry.is_file() and entry.name.lower().endswith(".stl"):
-                        st = entry.stat()
-                        kb = st.st_size / 1024.0
-                        size = f"{kb/1024.0:.1f} MB" if kb >= 1024 else f"{kb:.0f} KB"
-                        mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
-                        files.append({"name": entry.name, "path": entry.path,
-                                      "isDir": False, "size": size, "mtime": mtime})
-                except OSError:
-                    continue
-        except OSError as e:
-            self._log(f"HATA klasor okunamadi: {e}")
-        dirs.sort(key=lambda d: d["name"].lower())
-        files.sort(key=lambda f: f["name"].lower())
-        return dirs + files
-
     # ================= LOG =================
     def _log(self, msg):
         ts = time.strftime("%H:%M:%S")
