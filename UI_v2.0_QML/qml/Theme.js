@@ -15,6 +15,27 @@ var orange    = "#f59e0b";
 var red        = "#ef4444";
 var purple     = "#a855f7";
 
+// ================= DOKUNMATIK OLCU SABITLERI =================
+// 15.6" 1080p dokunmatik panel, parmakla kullanim. Material Design min 48px;
+// burada eldivenli/kalin parmak icin 56-64px. Hicbir dokunulabilir oge <56px olmamali.
+var touchMin    = 56;   // minimum dokunma hedefi
+var btnHeight   = 64;   // birincil aksiyon buton yuksekligi
+var inputHeight = 56;   // spinbox / metin girisi yuksekligi
+var stepperSize = 56;   // spinbox +/- stepper min kenar
+var gapMin      = 12;   // etkilesimli ogeler arasi min bosluk
+var rowHeight   = 64;   // liste satiri (StlPicker) yuksekligi
+var radius      = 12;   // panel kose yaricapi
+var radiusSm    = 8;    // kucuk oge kose yaricapi
+
+// ================= PUNTO (mevcut +~%20) =================
+var fsSmall   = 12;   // ipuclari / alt metin
+var fsBody    = 14;   // govde
+var fsButton  = 16;   // ikincil buton
+var fsButtonLg = 18;  // birincil buton
+var fsTitle   = 20;   // baslik
+var fsValue   = 22;   // spinbox degeri
+var fsTip     = 15;   // heatmap etiket (fsBody +~%15)
+
 // Isi haritasi: mm degerini renge cevir (0..600 -> mavi->yesil->kirmizi)
 function heat(mm, maxMm) {
     if (maxMm === undefined) maxMm = 600;
@@ -34,7 +55,7 @@ function heat(mm, maxMm) {
     return Qt.rgba(r / 255, g / 255, b / 255, 1);
 }
 
-// durum harfi -> renk
+// durum harfi -> renk (F = ariza, kirmizi ve belirgin)
 function stateColor(letter) {
     switch (letter) {
         case "S": return green;
@@ -42,5 +63,16 @@ function stateColor(letter) {
         case "H": return orange;
         case "F": return red;
         default:  return textDim;   // I
+    }
+}
+
+// durum harfi -> operator dili (STAT token: <harf><mm>)
+function stateLabel(letter) {
+    switch (letter) {
+        case "S": return "Hazir";
+        case "M": return "Hareket";
+        case "H": return "Referans";
+        case "F": return "ARIZA";
+        default:  return "Bosta";   // I
     }
 }

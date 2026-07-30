@@ -8,7 +8,7 @@ Rectangle {
     property var logModel
     property bool showInput: true
     color: "#050a14"
-    radius: 10
+    radius: Theme.radius
     border.color: Theme.border
 
     ColumnLayout {
@@ -18,15 +18,14 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: Theme.gapMin
             Rectangle { width: 8; height: 8; radius: 4; color: Theme.green }
-            Text { text: "SERIAL MONITOR"; color: Theme.textDim; font.bold: true; font.pixelSize: 11 }
+            Text { text: "SERIAL MONITOR"; color: Theme.textDim; font.bold: true; font.pixelSize: Theme.fsSmall }
             Item { Layout.fillWidth: true }
-            Button {
+            TouchButton {
                 text: "Temizle"
+                color: Theme.panelHi
                 onClicked: root.logModel.clear()
-                background: Rectangle { radius: 6; color: Theme.panelHi }
-                contentItem: Text { text: parent.text; color: Theme.textDim; font.pixelSize: 11
-                    leftPadding:8; rightPadding:8; topPadding:3; bottomPadding:3 }
             }
         }
 
@@ -42,35 +41,35 @@ Rectangle {
                 text: line
                 wrapMode: Text.WrapAnywhere
                 font.family: "monospace"
-                font.pixelSize: 12
+                font.pixelSize: Theme.fsSmall
                 color: line.indexOf("→") >= 0 ? Theme.accent2
                      : line.indexOf("←") >= 0 ? Theme.green
                      : line.indexOf("HATA") >= 0 ? Theme.red
                      : Theme.textDim
             }
             onCountChanged: positionViewAtEnd()
-            ScrollBar.vertical: ScrollBar {}
+            ScrollBar.vertical: ScrollBar { width: 16 }
         }
 
         RowLayout {
             visible: root.showInput
             Layout.fillWidth: true
-            spacing: 6
+            spacing: Theme.gapMin
             TextField {
                 id: cmdField
                 Layout.fillWidth: true
+                Layout.preferredHeight: Theme.inputHeight
                 placeholderText: "Komut (or: PING:01, ARR:01:..., STAT:01)"
                 color: Theme.text
                 font.family: "monospace"
-                background: Rectangle { radius: 6; color: "#0b1322"; border.color: Theme.border }
+                font.pixelSize: Theme.fsButton
+                background: Rectangle { radius: Theme.radiusSm; color: "#0b1322"; border.color: Theme.border }
                 onAccepted: { if (text.length) { app.sendRaw(text); text = "" } }
             }
-            Button {
+            TouchButton {
                 text: "Gonder"
+                color: Theme.accent
                 onClicked: { if (cmdField.text.length) { app.sendRaw(cmdField.text); cmdField.text = "" } }
-                background: Rectangle { radius: 6; color: Theme.accent }
-                contentItem: Text { text: parent.text; color: "white"; font.bold: true; font.pixelSize: 12
-                    leftPadding:14; rightPadding:14; topPadding:8; bottomPadding:8 }
             }
         }
     }

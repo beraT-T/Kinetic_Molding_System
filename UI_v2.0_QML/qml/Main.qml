@@ -34,13 +34,13 @@ ApplicationWindow {
         // ---- sekme cubugu ----
         Rectangle {
             Layout.fillWidth: true
-            height: 48
+            height: Theme.touchMin + 16
             color: Theme.bg2
             RowLayout {
                 anchors.left: parent.left
                 anchors.leftMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 8
+                spacing: Theme.gapMin
                 Repeater {
                     model: ["STL Kontrol", "Tester"]
                     delegate: Button {
@@ -48,8 +48,9 @@ ApplicationWindow {
                         checkable: true
                         checked: tabStack.currentIndex === index
                         onClicked: tabStack.currentIndex = index
+                        implicitHeight: Theme.touchMin
                         background: Rectangle {
-                            radius: 8
+                            radius: Theme.radiusSm
                             color: parent.checked ? Theme.accent : "transparent"
                             border.color: parent.checked ? Theme.accent : Theme.border
                             border.width: 1
@@ -58,11 +59,10 @@ ApplicationWindow {
                             text: parent.text
                             color: parent.checked ? "white" : Theme.textDim
                             font.bold: true
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fsButton
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            leftPadding: 18; rightPadding: 18
-                            topPadding: 6; bottomPadding: 6
+                            leftPadding: 22; rightPadding: 22
                         }
                     }
                 }
@@ -74,8 +74,14 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: 0
-            MainPage   { logModel: logModel }
+            MainPage   { logModel: logModel; onStlRequested: stlPicker.openAt("") }
             TesterPage { logModel: logModel }
         }
+    }
+
+    // ---- tam ekran STL secici (tum pencereyi kaplar) ----
+    StlPicker {
+        id: stlPicker
+        onPicked: function(path) { app.loadStl(path) }
     }
 }
