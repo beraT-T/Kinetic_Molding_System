@@ -121,6 +121,18 @@ Arayüz gerçek panelde çalışıyor: **Pi 5, Raspberry Pi OS Lite 64-bit (Trix
 4. Raspberry Pi OS **Bookworm kullanılamaz** (glibc 2.36; PySide6 6.8.1+ `manylinux_2_39`/glibc≥2.39).
    **Trixie şart.**
 5. **Hover yok** (parmak) → hoverEnabled/ToolTip/onEntered ölü; tap tabanlı eşdeğer kullan.
+6. **Dokunmatik hot-swap "touch sıçraması":** SiS HID Touch Controller (`0457:0819`) ilk
+   bağlantıda güvenilir enumerate olmuyor; cage başlarken cihaz hazir degilse eslemeyi kaciriyor
+   → dokunma yanlis koordinata dusuyor. **Cozum (otomatik):** cihaz eklenince kiosk'u tazeleyen
+   udev+oneshot (Pi'de, repoda degil):
+   - `/etc/systemd/system/kalip-touch-reset.service` (Type=oneshot, ExecStartPre sleep 2,
+     ExecStart `systemctl restart getty@tty1`)
+   - `/etc/udev/rules.d/99-kalip-touch.rules`:
+     `ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0457", ATTR{idProduct}=="0819",
+     TAG+="systemd", ENV{SYSTEMD_WANTS}+="kalip-touch-reset.service"`
+   Ayni model panel takasinda VID:PID ayni oldugu icin tek kural ikisini de kapsar; her takasta
+   kiosk otomatik yenilenip touch dogru eslenir. (udev'den dogrudan uzun systemctl yerine
+   oneshot service kullanildi.)
 
 ### Uzaktan doğrulama sınırı (donanım-döngüsü gibi)
 SSH ile DOĞRULANABİLİR: QML yükleniyor mu, import/traceback, binding uyarısı, uygulama ayakta mı.
