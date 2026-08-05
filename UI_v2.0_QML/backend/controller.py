@@ -19,6 +19,13 @@ def slave_grid_origin(slave_id):
     return row * 3, col * 3
 
 
+# Islem (op) sabitleri
+OP_POLL_MS      = 1500     # STAT poll araligi
+OP_STAGGER_MS   = 80       # modul modul komut gonderim araligi (UI bloklamaz)
+OP_TIMEOUT_S    = 300.0    # home ~200s, hareket ~150s -> pay birakildi
+DEMO_MOVE_S     = 6.0      # demo modda sahte hareket suresi
+
+
 class Controller(QObject):
     # ---- sinyaller ----
     logMessage        = Signal(str)
@@ -31,6 +38,10 @@ class Controller(QObject):
     currentSlaveIdChanged = Signal()
     statusReceived    = Signal(int, "QVariantList")   # slaveId, [ "S120", "M300", ... ]
     stlUrlChanged     = Signal()
+    busyChanged       = Signal()
+    homedChanged      = Signal()
+    opProgress        = Signal(str, int, int)         # faz metni, biten modul, toplam
+    operationFinished = Signal(bool, str, str)        # ok, baslik, mesaj
     _lineSig          = Signal(str)                   # serial thread -> main thread kopru
 
     def __init__(self, demo=False):
@@ -47,6 +58,15 @@ class Controller(QObject):
         self._current_slave = 1
         self._demo_targets = {}    # demo modu icin son hedefler
         self._stl_url = QUrl()     # yuklu ham STL yolu (3D STL gorunumu icin)
+
+        # --- islem (op) durum makinesi ---
+        self._homed = set()        # bu oturumda referans alinmis modul id'leri
+        self._op = None            # aktif islem sozlugu (asagida _start_op)
+        self._op_timer = QTimer(self)
+        self._op_timer.setInterval(OP_POLL_MS)
+        self._op_timer.timeout.connect(self._poll_op)
+        self._demo_done_at = {}    # demo: sid -> sahte hareketin bitecegi zaman
+        self._demo_letter = {}     # demo: sid -> hareket sirasindaki durum harfi
 
         self.refreshPorts()
 
@@ -80,6 +100,22 @@ class Controller(QObject):
     def _get_stl_url(self): return self._stl_url
     stlFileUrl = Property(QUrl, _get_stl_url, notify=stlUrlChanged)
 
+    # islem suruyor mu (butonlar kilitlenir; home bitmeden hareket gonderilmez)
+    def _get_busy(self): return self._op is not None
+    busy = Property(bool, _get_busy, notify=busyChanged)
+
+    # bagli modullerin hepsi bu oturumda referans aldi mi
+    def _get_all_homed(self):
+        if not self._active:
+            return False
+        return all(s in self._homed for s in self._active)
+    allHomed = Property(bool, _get_all_homed, notify=homedChanged)
+
+    def _reset_homed(self):
+        """Baglanti degisince referans bilgisi gecersiz (guc durumu bilinmez)."""
+        self._homed = set()
+        self.homedChanged.emit()
+
     # ================= LOG =================
     def _log(self, msg):
         ts = time.strftime("%H:%M:%S")
@@ -104,6 +140,7 @@ class Controller(QObject):
         try:
             self._serial.open(device, baud)
             self._connected = True
+            self._reset_homed()
             self.connectedChanged.emit()
             self._log(f"Baglandi: {device} @ {baud}")
         except Exception as e:
@@ -111,8 +148,10 @@ class Controller(QObject):
 
     @Slot()
     def disconnectPort(self):
+        self._abort_op("Baglanti kesildi")
         self._serial.close()
         self._connected = False
+        self._reset_homed()
         self.connectedChanged.emit()
         self._log("Baglanti kesildi")
 
@@ -134,7 +173,8 @@ class Controller(QObject):
             for s in range(1, 5):
                 self._active.append(s)
             self.activeSlavesChanged.emit()
-            self._log(f"DEMO: aktif slave {self._active}")
+            self.homedChanged.emit()   # allHomed aktif listeye bagli
+            self._log(f"DEMO: {len(self._active)} modul bulundu {self._active}")
             return
 
         def worker():
@@ -179,6 +219,152 @@ class Controller(QObject):
                 vals.append(int(self._grid[idx]) if idx < len(self._grid) else 0)
         return vals
 
+    # ---------- ISLEM (OP) DURUM MAKINESI ----------
+    # Faz zinciri: ["home", "send"] gibi. Her faz: komutlar kademeli gonderilir,
+    # sonra STAT poll ile tum modullerin tokenlari "S" olana kadar beklenir.
+    # Protokol v5.1 aynen: ARR/HOME ack doner, bitis STAT poll ile anlasilir.
+
+    @Slot()
+    def startProduction(self):
+        """Ana uretim akisi: ONCE HOME (tum bagli moduller) SONRA sekli uygula."""
+        if not self._guard_op():
+            return
+        if not self._grid:
+            self.operationFinished.emit(False, "Model yok", "Once bir STL yukleyip hesaplayin.")
+            return
+        self._start_op(["home", "send"], list(self._active))
+
+    @Slot()
+    def startHomeAll(self):
+        """Sadece referans alma (tum bagli moduller)."""
+        if not self._guard_op():
+            return
+        self._start_op(["home"], list(self._active))
+
+    @Slot(int)
+    def startSendSelected(self, slave_id):
+        """Test: yalnizca secili module sekli uygula (home zorunlu degil)."""
+        if not self._guard_op():
+            return
+        if not self._grid:
+            self.operationFinished.emit(False, "Model yok", "Once bir STL yukleyip hesaplayin.")
+            return
+        self._start_op(["send"], [int(slave_id)])
+
+    def _guard_op(self):
+        """Islem baslatilabilir mi (bagli, bos, modul var)."""
+        if self._op:
+            self.operationFinished.emit(False, "Islem suruyor",
+                                        "Mevcut hareket bitmeden yeni islem baslatilamaz.")
+            return False
+        if not self._connected:
+            self.operationFinished.emit(False, "Baglanti yok", "Once cihaza baglanin.")
+            return False
+        if not self._active:
+            self.operationFinished.emit(False, "Modul yok",
+                                        "Bagli modul bulunamadi. Once 'Modulleri Bul'.")
+            return False
+        return True
+
+    def _start_op(self, seq, targets):
+        self._op = {
+            "seq": list(seq), "phase": None, "targets": list(targets),
+            "pending": set(), "t0": 0.0, "step": 0, "nsteps": len(seq), "label": "",
+        }
+        self._next_phase()
+
+    def _next_phase(self):
+        op = self._op
+        if not op:
+            return
+        if not op["seq"]:
+            self._finish_op(True, "Tamamlandi", "Tum moduller hedef pozisyonda.")
+            return
+        phase = op["seq"].pop(0)
+        op["phase"] = phase
+        op["step"] += 1
+        op["label"] = "Referans aliniyor" if phase == "home" else "Sekil uygulaniyor"
+        op["pending"] = set(op["targets"])
+        op["t0"] = time.time()
+        self._log(f"{op['label']} ({op['step']}/{op['nsteps']}) - {len(op['targets'])} modul")
+        self.busyChanged.emit()
+        self._emit_progress()
+        self._dispatch(phase, list(op["targets"]), 0)
+        self._op_timer.start()
+
+    def _dispatch(self, phase, targets, i):
+        """Komutlari modul modul kademeli gonder (QTimer - UI bloklamaz)."""
+        if not self._op or i >= len(targets):
+            return
+        sid = targets[i]
+        if phase == "home":
+            self._send(f"HOME:{sid:02d}")
+            self._demo_begin(sid, "H", [0] * 9)
+        else:
+            vals = self._slave_values(sid)
+            self._send(f"ARR:{sid:02d}:" + ":".join(str(v) for v in vals))
+            self._demo_begin(sid, "M", vals)
+        QTimer.singleShot(OP_STAGGER_MS, lambda: self._dispatch(phase, targets, i + 1))
+
+    def _poll_op(self):
+        op = self._op
+        if not op:
+            self._op_timer.stop()
+            return
+        if time.time() - op["t0"] > OP_TIMEOUT_S:
+            kalan = ", ".join(str(s) for s in sorted(op["pending"]))
+            self._finish_op(False, "Zaman asimi",
+                            f"{op['label']} tamamlanmadi. Yanit vermeyen modul: {kalan}")
+            return
+        for sid in sorted(op["pending"]):
+            self.requestStatus(sid)
+
+    def _op_status(self, sid, toks):
+        """STAT cevabini aktif isleme isle (tum tokenlar S -> o modul bitti)."""
+        op = self._op
+        if not op or sid not in op["pending"]:
+            return
+        letters = [t[:1] for t in toks if t]
+        if len(letters) < 9:
+            return
+        if "F" in letters:
+            motor = letters.index("F") + 1
+            self._finish_op(False, "ARIZA",
+                            f"Modul {sid} / Motor {motor} ariza verdi. "
+                            "Encoder kablosunu ve mekanigi kontrol edin.")
+            return
+        if all(l == "S" for l in letters):
+            op["pending"].discard(sid)
+            self._emit_progress()
+            if not op["pending"]:
+                self._op_timer.stop()
+                if op["phase"] == "home":
+                    self._homed.update(op["targets"])
+                    self.homedChanged.emit()
+                self._next_phase()
+
+    def _emit_progress(self):
+        op = self._op
+        if not op:
+            return
+        total = len(op["targets"])
+        done = total - len(op["pending"])
+        self.opProgress.emit(f"{op['label']} ({op['step']}/{op['nsteps']})", done, total)
+
+    def _finish_op(self, ok, title, msg):
+        self._op_timer.stop()
+        self._op = None
+        self.busyChanged.emit()
+        self._log(("TAMAM: " if ok else "HATA: ") + title + " - " + msg)
+        self.operationFinished.emit(bool(ok), title, msg)
+
+    def _abort_op(self, reason):
+        """Islem varsa sessizce bitir (baglanti kesilmesi vb.).
+        NOT: protokol v5.1'de STOP/ABORT komutu YOK - motorlar fiziksel olarak durmaz."""
+        if self._op:
+            self._finish_op(False, "Islem kesildi", reason)
+
+    # ---------- tekil komutlar (Tester / test butonlari - gate yok) ----------
     @Slot(int)
     def sendArrayToSlave(self, slave_id):
         if not self._grid:
@@ -187,33 +373,12 @@ class Controller(QObject):
         vals = self._slave_values(slave_id)
         cmd = f"ARR:{slave_id:02d}:" + ":".join(str(v) for v in vals)
         self._send(cmd)
-        self._demo_targets[slave_id] = vals
-
-    @Slot()
-    def sendArrayActive(self):
-        if not self._grid:
-            self._log("HATA: once STL hesapla")
-            return
-        if not self._active:
-            self._log("HATA: aktif slave yok, once tara")
-            return
-        for sid in self._active:
-            self.sendArrayToSlave(sid)
-            time.sleep(0.05)
+        self._demo_begin(slave_id, "M", vals)
 
     @Slot(int)
     def homeSlave(self, slave_id):
         self._send(f"HOME:{slave_id:02d}")
-        self._demo_targets[slave_id] = [0] * 9
-
-    @Slot()
-    def homeAllActive(self):
-        if not self._active:
-            self._log("HATA: aktif slave yok")
-            return
-        for sid in self._active:
-            self.homeSlave(sid)
-            time.sleep(0.05)
+        self._demo_begin(slave_id, "H", [0] * 9)
 
     @Slot(int, int, int)
     def moveMotor(self, slave_id, motor_id, mm):
@@ -226,16 +391,33 @@ class Controller(QObject):
     @Slot(int, int)
     def allToValue(self, slave_id, mm):
         self._send(f"ALL:{slave_id:02d}:{int(mm)}")
-        self._demo_targets[slave_id] = [int(mm)] * 9
+        self._demo_begin(slave_id, "M", [int(mm)] * 9)
+
+    # ---------- demo simulasyonu (donanimsiz gelistirme) ----------
+    def _demo_begin(self, slave_id, letter, vals):
+        """Demo modda sahte hareket baslat: DEMO_MOVE_S boyunca M/H, sonra S."""
+        self._demo_targets[slave_id] = vals
+        if not self._demo:
+            return
+        self._demo_letter[slave_id] = letter
+        self._demo_done_at[slave_id] = time.time() + DEMO_MOVE_S
 
     @Slot(int)
     def requestStatus(self, slave_id):
         if self._demo:
             vals = self._demo_targets.get(slave_id, [0] * 9)
-            toks = [f"S{v}" for v in vals]
-            self.statusReceived.emit(slave_id, toks)
+            if time.time() < self._demo_done_at.get(slave_id, 0.0):
+                letter = self._demo_letter.get(slave_id, "M")
+            else:
+                letter = "S"
+            self._on_status(slave_id, [f"{letter}{v}" for v in vals])
             return
         self._send(f"STAT:{slave_id:02d}")
+
+    def _on_status(self, slave_id, toks):
+        """Tek giris noktasi: STAT hem UI'ya hem aktif isleme dagitilir."""
+        self.statusReceived.emit(slave_id, toks)
+        self._op_status(slave_id, toks)
 
     @Slot(str)
     def sendRaw(self, text):
@@ -279,6 +461,7 @@ class Controller(QObject):
                     self._active.append(sid)
                     self._active.sort()
                     self.activeSlavesChanged.emit()
+                    self.homedChanged.emit()   # allHomed aktif listeye bagli
             except Exception:
                 pass
         elif line.startswith("STAT:"):
@@ -287,6 +470,6 @@ class Controller(QObject):
                 parts = line.split(":", 2)
                 sid = int(parts[1])
                 toks = parts[2].split(",") if len(parts) > 2 else []
-                self.statusReceived.emit(sid, toks)
+                self._on_status(sid, toks)
             except Exception:
                 pass

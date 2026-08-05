@@ -126,6 +126,20 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: Theme.gapMin
+                    // referans uyarisi (Tester'da engelleme yok, yalniz uyari)
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 36
+                        radius: Theme.radiusSm
+                        color: Theme.red
+                        visible: app.connected && !app.allHomed
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Referans alinmadi - pozisyonlar guvenilir degil. Once Home yapin."
+                            color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall
+                        }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gapMin

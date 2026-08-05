@@ -59,6 +59,21 @@ Rectangle {
             onClicked: app.scan()
         }
 
+        // referans (home) durumu - her islemden once home sarti
+        Rectangle {
+            visible: app.connected
+            radius: Theme.radiusSm
+            implicitHeight: 34
+            implicitWidth: refText.implicitWidth + 22
+            color: app.allHomed ? Theme.green : Theme.red
+            Text {
+                id: refText
+                anchors.centerIn: parent
+                text: app.allHomed ? "REFERANS OK" : "REFERANS YOK"
+                color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall
+            }
+        }
+
         // durum
         Row {
             spacing: 8

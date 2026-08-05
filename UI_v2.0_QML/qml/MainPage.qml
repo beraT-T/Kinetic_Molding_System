@@ -23,6 +23,35 @@ Item {
         onAccepted: app.loadStl(selectedFile)
     }
 
+    // Hareket baslatmadan once onay (fiziksel makine hareket edecek)
+    AppDialog {
+        id: confirmDialog
+        property string action: ""
+        function ask(what) {
+            confirmDialog.action = what
+            if (what === "production")
+                show("Uretimi baslat",
+                     "Once tum bagli modullerde referans (home) alinacak, " +
+                     "ardindan model sekli uygulanacak.\n\n" +
+                     "Toplam sure yaklasik 5 dakika. Kalip alanini bosaltin.",
+                     "Basla", "Iptal", Theme.green)
+            else if (what === "home")
+                show("Referans al",
+                     "Tum bagli modullerde tum eksenler sifira inecek (~150 sn).",
+                     "Home Yap", "Iptal", Theme.orange)
+            else
+                show("Secili module uygula",
+                     "Modul " + app.currentSlaveId + " icin model sekli uygulanacak (~150 sn).\n" +
+                     "Bu bir test islemidir; referans alinmamissa pozisyonlar hatali olabilir.",
+                     "Uygula", "Iptal", Theme.accent)
+        }
+        onAccepted: {
+            if (action === "production") app.startProduction()
+            else if (action === "home") app.startHomeAll()
+            else app.startSendSelected(app.currentSlaveId)
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 16
@@ -171,25 +200,41 @@ Item {
                             onValueModified: app.currentSlaveId = value
                             Layout.preferredHeight: Theme.inputHeight
                             font.pixelSize: Theme.fsButton
+                            enabled: !app.busy
                         }
                         Text {
                             text: "Bagli: [" + app.activeSlaves.join(", ") + "]"
                             color: Theme.textDim; font.pixelSize: Theme.fsSmall
                         }
+                        // referans durumu (her islemden once home sarti)
+                        Rectangle {
+                            radius: Theme.radiusSm
+                            implicitHeight: 30
+                            implicitWidth: refLbl.implicitWidth + 20
+                            color: app.allHomed ? Theme.green : Theme.red
+                            visible: app.connected
+                            Text {
+                                id: refLbl
+                                anchors.centerIn: parent
+                                text: app.allHomed ? "Referans alindi" : "Referans alinmadi"
+                                color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall
+                            }
+                        }
                     }
 
-                    ActionButton { text: "Secili Module Uygula"; color: Theme.accent
-                        enabled: app.connected && app.gridData.length > 0
-                        onClicked: app.sendArrayToSlave(app.currentSlaveId) }
-                    ActionButton { text: "Tum Modullere Uygula"; color: Theme.purple
-                        enabled: app.connected && app.gridData.length > 0
-                        onClicked: app.sendArrayActive() }
-                    ActionButton { text: "Home"; color: Theme.orange
-                        enabled: app.connected
-                        onClicked: app.homeSlave(app.currentSlaveId) }
-                    ActionButton { text: "Basla"; color: Theme.green
-                        enabled: app.connected
-                        onClicked: app.requestStatus(app.currentSlaveId) }
+                    // Test: yalnizca secili module gonder (home zorunlu degil)
+                    ActionButton { text: "Secili Module Uygula"; subText: "test"; color: Theme.accent
+                        enabled: app.connected && app.gridData.length > 0 && !app.busy
+                        onClicked: confirmDialog.ask("send") }
+                    // Sadece referans alma
+                    ActionButton { text: "Home"; subText: "tum moduller"; color: Theme.orange
+                        enabled: app.connected && !app.busy
+                        onClicked: confirmDialog.ask("home") }
+                    // Ana uretim akisi: once HOME sonra sekil (tum bagli moduller)
+                    ActionButton { text: "BASLA"; subText: "home + sekil uygula"; color: Theme.green
+                        Layout.columnSpan: 2
+                        enabled: app.connected && app.gridData.length > 0 && !app.busy
+                        onClicked: confirmDialog.ask("production") }
                 }
             }
         }
