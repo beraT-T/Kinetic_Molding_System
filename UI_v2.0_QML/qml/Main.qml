@@ -31,6 +31,9 @@ ApplicationWindow {
 
         Header { Layout.fillWidth: true }
 
+        // kalici durum/alarm seridi - her sekmede gorunur (ISA-101)
+        StatusStrip { Layout.fillWidth: true }
+
         // ---- sekme cubugu ----
         Rectangle {
             Layout.fillWidth: true
@@ -51,8 +54,8 @@ ApplicationWindow {
                         implicitHeight: Theme.touchMin
                         background: Rectangle {
                             radius: Theme.radiusSm
-                            color: parent.checked ? Theme.accent : "transparent"
-                            border.color: parent.checked ? Theme.accent : Theme.border
+                            color: parent.checked ? Theme.selection : "transparent"
+                            border.color: parent.checked ? Theme.selection : Theme.border
                             border.width: 1
                         }
                         contentItem: Text {
@@ -77,10 +80,21 @@ ApplicationWindow {
             MainPage   { logModel: logModel }
             TesterPage { logModel: logModel }
         }
+
     }
 
-    // ---- hareket sirasinda ilerleme katmani ----
-    BusyOverlay { }
+    // Hareket ilerlemesi: ekrani KAPATMAZ. Yerlesimden yer CALMAZ; aksiyon
+    // cubugunun uzerine biner (butonlar zaten islem sirasinda devre disi).
+    // Isi haritasi ve durum seridi canli izlenebilir kalir.
+    BusyOverlay {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        anchors.bottomMargin: 16
+        height: 230
+    }
 
     // ---- bilgi/hata penceresi (islem sonucu) ----
     AppDialog { id: infoDialog }
@@ -91,7 +105,7 @@ ApplicationWindow {
         target: app
         function onOperationFinished(ok, title, message) {
             infoDialog.show(title, message, "Tamam", "",
-                            ok ? Theme.green : Theme.red)
+                            ok ? Theme.actionStart : Theme.alarm)
         }
     }
 }

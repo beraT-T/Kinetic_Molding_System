@@ -72,17 +72,20 @@ Item {
                             property int sid: index + 1
                             property bool sel: app.currentSlaveId === sid
                             property bool online: app.activeSlaves.indexOf(sid) >= 0
-                            color: cell.sel ? Qt.rgba(0.23,0.51,0.96,0.35)
-                                 : cell.online ? Qt.rgba(0.13,0.77,0.37,0.18) : Theme.panelHi
-                            border.width: cell.sel ? 2 : 1
-                            border.color: cell.sel ? Theme.accent : (cell.online ? Theme.green : Theme.border)
+                            // NORMAL durum notr kalir (yesil dekoratif kullanilmaz);
+                            // secim mavi cerceve, bagli olmayan sonuk.
+                            color: cell.sel ? Qt.rgba(0.29,0.44,0.65,0.35) : Theme.panelHi
+                            opacity: cell.online || cell.sel ? 1.0 : 0.55
+                            border.width: cell.sel ? 3 : 1
+                            border.color: cell.sel ? Theme.selection : Theme.border
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 2
-                                Text { text: "Modul " + cell.sid; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody
+                                Text { text: cell.sid; color: Theme.text; font.bold: true
+                                    font.pixelSize: Theme.fsTitle; font.family: Theme.fontMono
                                     anchors.horizontalCenter: parent.horizontalCenter }
-                                Text { text: cell.online ? "bagli" : "bagli degil"
-                                    color: cell.online ? Theme.green : Theme.textDim; font.pixelSize: Theme.fsSmall
+                                Text { text: cell.online ? "bagli" : "yok"
+                                    color: Theme.textDim; font.pixelSize: Theme.fsSmall
                                     anchors.horizontalCenter: parent.horizontalCenter }
                             }
                             TapHandler { onTapped: app.currentSlaveId = cell.sid }
@@ -135,12 +138,13 @@ Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 36
                         radius: Theme.radiusSm
-                        color: Theme.red
+                        // ANORMAL / on-kosul eksik -> AMBER (kirmizi yalniz gercek ariza)
+                        color: Theme.warn
                         visible: app.connected && !app.allHomed
                         Text {
                             anchors.centerIn: parent
-                            text: "Referans alinmadi - pozisyonlar guvenilir degil. Once Home yapin."
-                            color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall
+                            text: "⚠  REFERANS ALINMADI - pozisyonlar guvenilir degil, once Home yapin"
+                            color: "#101214"; font.bold: true; font.pixelSize: Theme.fsBody
                         }
                     }
 
@@ -150,17 +154,17 @@ Item {
                         Text { text: "Modul " + app.currentSlaveId; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                         Item { Layout.fillWidth: true }
                         TouchButton {
-                            text: "Tumunu Sifirla"; color: Theme.orange
+                            text: "Tumunu Sifirla"; color: Theme.actionNeutral
                             enabled: app.connected
                             onClicked: { app.allToValue(app.currentSlaveId, 0); page.applyVals(page.fill(0)) }
                         }
                         TouchButton {
-                            text: "Test 300 mm"; color: Theme.accent
+                            text: "Test 300 mm"; color: Theme.actionNeutral
                             enabled: app.connected
                             onClicked: { app.allToValue(app.currentSlaveId, 300); page.applyVals(page.fill(300)) }
                         }
                         TouchButton {
-                            text: "Home Hepsi"; color: Theme.green
+                            text: "Home Hepsi"; color: Theme.actionWarn
                             enabled: app.connected
                             onClicked: { app.homeSlave(app.currentSlaveId); page.applyVals(page.fill(0)) }
                         }
@@ -181,7 +185,7 @@ Item {
                                 Layout.fillHeight: true
                                 radius: Theme.radiusSm
                                 color: Theme.panelHi
-                                border.color: mcell.st === "F" ? Theme.red : Theme.border
+                                border.color: mcell.st === "F" ? Theme.alarm : Theme.border
                                 border.width: mcell.st === "F" ? 3 : 1
 
                                 Connections {
@@ -194,68 +198,78 @@ Item {
                                     anchors.margins: 10
                                     spacing: 6
 
-                                    // baslik + durum cipi
+                                    // baslik + durum cipi (renk + METIN birlikte - WCAG 1.4.1)
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: "Motor " + (index + 1); color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
-                                        Text { text: "mm · yaz + Enter"; color: Theme.textDim; font.pixelSize: Theme.fsSmall }
+                                        Text { text: "MOTOR " + (index + 1); color: Theme.text
+                                            font.pixelSize: Theme.fsBody; font.bold: true }
                                         Item { Layout.fillWidth: true }
                                         Rectangle {
                                             radius: Theme.radiusSm
-                                            implicitHeight: 26
-                                            implicitWidth: stLbl.implicitWidth + 18
-                                            color: Theme.stateColor(mcell.st)
+                                            implicitHeight: 30
+                                            implicitWidth: stLbl.implicitWidth + 20
+                                            color: mcell.st === "F" ? Theme.alarm
+                                                 : mcell.st === "H" ? Theme.warn : Theme.panel
+                                            border.color: Theme.border
+                                            border.width: (mcell.st === "F" || mcell.st === "H") ? 0 : 1
                                             Text { id: stLbl; anchors.centerIn: parent
-                                                text: Theme.stateLabel(mcell.st)
-                                                color: "white"; font.bold: true; font.pixelSize: Theme.fsSmall }
+                                                text: (mcell.st === "F" ? "⚠ " : "") + Theme.stateLabel(mcell.st)
+                                                color: (mcell.st === "F" || mcell.st === "H") ? "#101214" : Theme.textDim
+                                                font.bold: true; font.pixelSize: Theme.fsSmall }
                                         }
                                     }
 
                                     Item { Layout.fillHeight: true; Layout.fillWidth: true }
 
-                                    // Hedef mm girisi: degeri yaz + Enter ile gonder (MOV).
-                                    // +/- stepper sadece degeri ayarlar, gondermez (kazara hareket yok).
-                                    SpinBox {
-                                        id: sp
+                                    // Hedef mm girisi + Home YAN YANA (dikey alan kazanci).
+                                    // Deger yaz + Enter -> MOV. +/- stepper sadece ayarlar, gondermez.
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: Theme.inputHeight
-                                        from: 0; to: 600; stepSize: 10; editable: true
-                                        value: 0
-                                        font.pixelSize: Theme.fsValue
-                                        contentItem: TextInput {
-                                            text: sp.displayText
-                                            color: Theme.accent2
-                                            font.pixelSize: Theme.fsValue
-                                            font.bold: true
-                                            horizontalAlignment: Qt.AlignHCenter
-                                            verticalAlignment: Qt.AlignVCenter
-                                            readOnly: !sp.editable
-                                            validator: sp.validator
-                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                            selectByMouse: true
-                                            onAccepted: {
-                                                sp.value = sp.valueFromText(text, sp.locale)
-                                                if (app.connected)
-                                                    app.moveMotor(app.currentSlaveId, index + 1, sp.value)
+                                        spacing: Theme.gapMin
+                                        SpinBox {
+                                            id: sp
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: Theme.touchDense
+                                            from: 0; to: 600; stepSize: 10; editable: true
+                                            value: 0
+                                            font.pixelSize: Theme.fsButton
+                                            contentItem: TextInput {
+                                                text: sp.displayText
+                                                color: Theme.text
+                                                font.pixelSize: Theme.fsValue
+                                                font.bold: true
+                                                font.family: Theme.fontMono
+                                                horizontalAlignment: Qt.AlignHCenter
+                                                verticalAlignment: Qt.AlignVCenter
+                                                readOnly: !sp.editable
+                                                validator: sp.validator
+                                                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                                selectByMouse: true
+                                                onAccepted: {
+                                                    sp.value = sp.valueFromText(text, sp.locale)
+                                                    if (app.connected)
+                                                        app.moveMotor(app.currentSlaveId, index + 1, sp.value)
+                                                }
+                                            }
+                                            Connections {
+                                                target: page
+                                                function onApplyVals(arr) { sp.value = arr[index] }
                                             }
                                         }
-                                        Connections {
-                                            target: page
-                                            function onApplyVals(arr) { sp.value = arr[index] }
+                                        TouchButton {
+                                            text: "Home"
+                                            dense: true
+                                            color: Theme.actionWarn
+                                            enabled: app.connected && !app.busy
+                                            onClicked: { app.homeMotor(app.currentSlaveId, index + 1); sp.value = 0 }
                                         }
                                     }
-                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
 
-                                    Button {
-                                        text: "Home"
-                                        Layout.fillWidth: true
-                                        implicitHeight: Theme.touchMin
-                                        enabled: app.connected
-                                        onClicked: { app.homeMotor(app.currentSlaveId, index + 1); sp.value = 0 }
-                                        background: Rectangle { radius: Theme.radiusSm; color: Theme.orange; opacity: parent.enabled ? 0.9 : 0.3 }
-                                        contentItem: Text { text: parent.text; color: "white"; font.pixelSize: Theme.fsButton; font.bold: true
-                                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                    }
+                                    Text { text: "mm  ·  deger yaz + Enter"
+                                        color: Theme.textFaint; font.pixelSize: Theme.fsSmall
+                                        Layout.alignment: Qt.AlignHCenter }
+
+                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
                                 }
                             }
                         }

@@ -105,7 +105,7 @@ Item {
         id: tip
         visible: root.selR >= 0 && root.selC >= 0 && app.gridData.length > 0
         color: "#e6000000"   // QML 8-hane hex = #AARRGGBB; %90 siyah
-        border.color: Theme.accent
+        border.color: Theme.selection
         border.width: 2
         radius: Theme.radiusSm
         width: tipText.implicitWidth + 20

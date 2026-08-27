@@ -43,7 +43,9 @@ class Controller(QObject):
     stlUrlChanged     = Signal()
     busyChanged       = Signal()
     homedChanged      = Signal()
-    opProgress        = Signal(str, int, int)         # faz metni, biten modul, toplam
+    faultChanged      = Signal()
+    # faz metni, biten MOTOR, toplam motor, gecen sn, tahmini kalan sn (-1 bilinmiyor)
+    opProgress        = Signal(str, int, int, int, int)
     operationFinished = Signal(bool, str, str)        # ok, baslik, mesaj
     _lineSig          = Signal(str)                   # serial thread -> main thread kopru
 
@@ -70,6 +72,7 @@ class Controller(QObject):
         self._op_timer.timeout.connect(self._poll_op)
         self._demo_done_at = {}    # demo: sid -> sahte hareketin bitecegi zaman
         self._demo_letter = {}     # demo: sid -> hareket sirasindaki durum harfi
+        self._fault_text = ""      # durum seridinde gosterilen son ariza
 
         self.refreshPorts()
 
@@ -118,6 +121,16 @@ class Controller(QObject):
         """Baglanti degisince referans bilgisi gecersiz (guc durumu bilinmez)."""
         self._homed = set()
         self.homedChanged.emit()
+
+    # durum seridi: aktif ariza metni ("" = ariza yok)
+    def _get_fault(self): return self._fault_text
+    faultText = Property(str, _get_fault, notify=faultChanged)
+
+    @Slot()
+    def clearFault(self):
+        if self._fault_text:
+            self._fault_text = ""
+            self.faultChanged.emit()
 
     # ================= LOG =================
     def _log(self, msg):
@@ -273,10 +286,12 @@ class Controller(QObject):
         return True
 
     def _start_op(self, seq, targets):
+        self.clearFault()
         self._op = {
             "seq": list(seq), "phase": None, "targets": list(targets),
             "pending": set(), "t0": 0.0, "step": 0, "nsteps": len(seq), "label": "",
             "dispatching": False, "poll_i": 0,
+            "mstate": {},          # sid -> son STAT harfleri (motor bazli ilerleme)
         }
         self._next_phase()
 
@@ -294,6 +309,7 @@ class Controller(QObject):
         op["pending"] = set(op["targets"])
         op["t0"] = time.time()
         op["poll_i"] = 0
+        op["mstate"] = {}
         op["dispatching"] = True     # komutlar giderken poll yapma (hat cakismasin)
         self._log(f"{op['label']} ({op['step']}/{op['nsteps']}) - {len(op['targets'])} modul")
         self.busyChanged.emit()
@@ -328,6 +344,7 @@ class Controller(QObject):
             self._finish_op(False, "Zaman asimi",
                             f"{op['label']} tamamlanmadi. Yanit vermeyen modul: {kalan}")
             return
+        self._emit_progress()            # gecen sure her saniye ilerlesin
         if op["dispatching"]:
             return                       # komutlar hala gidiyor, hatti mesgul etme
         pend = sorted(op["pending"])
@@ -347,10 +364,15 @@ class Controller(QObject):
         letters = [t[:1] for t in toks if t]
         if len(letters) < 9:
             return
+        op["mstate"][sid] = letters      # motor bazli ilerleme icin sakla
         if "F" in letters:
             # ilk arizali degil, TUM arizali motorlari bildir
             faulty = [str(i + 1) for i, l in enumerate(letters) if l == "F"]
             coklu = len(faulty) > 1
+            # durum seridi icin kalici ariza kaydi (sekme degistirse de gorunur)
+            self._fault_text = (f"MODUL {sid} / MOTOR {', '.join(faulty)} ARIZA"
+                                f"  ·  {time.strftime('%H:%M:%S')}")
+            self.faultChanged.emit()
             self._finish_op(False, "ARIZA",
                             f"Modul {sid} / Motor {', '.join(faulty)} ariza verdi"
                             + (" (birden fazla motor)" if coklu else "") + ".\n"
@@ -369,12 +391,28 @@ class Controller(QObject):
                 self._next_phase()
 
     def _emit_progress(self):
+        """Ilerleme MOTOR bazli: modul sayisiyla olculurse 1-2 modulde cubuk
+        150 sn boyunca hic kipirdamiyor ("dondu mu?" hissi)."""
         op = self._op
         if not op:
             return
-        total = len(op["targets"])
-        done = total - len(op["pending"])
-        self.opProgress.emit(f"{op['label']} ({op['step']}/{op['nsteps']})", done, total)
+        total = len(op["targets"]) * 9
+        done = 0
+        for sid in op["targets"]:
+            if sid not in op["pending"]:
+                done += 9                       # o modul tamamen bitti
+            else:
+                letters = op["mstate"].get(sid, [])
+                done += sum(1 for l in letters if l == "S")
+        elapsed = int(time.time() - op["t0"]) if op["t0"] else 0
+        # kalan sure tahmini: yeterli ilerleme olusunca (NN/g: >1 dk islemde goster)
+        remaining = -1
+        if done > 0 and elapsed > 3:
+            frac = done / float(total)
+            if frac >= 0.05:
+                remaining = max(0, int(elapsed * (1.0 - frac) / frac))
+        self.opProgress.emit(f"{op['label']} ({op['step']}/{op['nsteps']})",
+                             done, total, elapsed, remaining)
 
     def _finish_op(self, ok, title, msg):
         self._op_timer.stop()

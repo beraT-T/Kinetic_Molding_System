@@ -16,7 +16,7 @@ Item {
     property string message: ""
     property string acceptText: "Tamam"
     property string rejectText: ""
-    property color accentColor: Theme.accent
+    property color accentColor: Theme.actionPrimary
 
     signal accepted()
     signal rejected()
@@ -26,7 +26,7 @@ Item {
         root.message = m || ""
         root.acceptText = okText || "Tamam"
         root.rejectText = cancelText || ""
-        root.accentColor = col || Theme.accent
+        root.accentColor = col || Theme.actionPrimary
         root.visible = true
     }
 

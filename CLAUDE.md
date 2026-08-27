@@ -130,6 +130,30 @@ home bitmeden hareket komutu göndermek sıfır referansını bozar.
 - STL interpolasyonu: trimesh + scipy `LinearNDInterpolator`, merkez 300mm'ye offset,
   **10–590 mm clip** (güvenlik marjı — aşağıya bak).
 
+### HMI stil rehberi (ISA-101 / IEC 60073 / ISO 9241-303)
+
+Arayüz endüstriyel HMI konvansiyonlarına göre tasarlandı. **Kurallar `qml/Theme.js`
+başındaki yorum bloğundadır** (ISA-101 hex dayatmaz, kuruluşun kendi stil rehberini
+yazmasını ister — o dosya bu rehberdir). Özet:
+
+- **Renk bütçesi:** normal işletimde ekran nötr gri ("report by exception").
+  Kırmızı **yalnız arıza**; amber = anormal/ön-koşul eksik (referans yok, bağlantı yok);
+  normal durum **nötr** (yeşil dekoratif kullanılmaz).
+- **İstisna:** IEC 60204-1 uyarınca start **aktüatörü** yeşil olabilir → `BAŞLA`
+  butonunun yeşili standarda uygundur, nötrlenmemeli.
+- **Veri rengi ≠ durum rengi:** ısı haritası **cividis** (algısal düzgün, renk körü
+  uyumlu, **kırmızı içermez**) → alarm kırmızısıyla karışmaz. Rainbow/jet kullanma.
+- **Ölçüler:** dokunma hedefi ≥80 px (~14 mm), birincil buton 92 px, tehlikeli
+  hareketi başlatan tek kontrol (`BAŞLA`) 132 px (~24 mm). Bakım (Tester) ekranında
+  yoğunluk için `touchDense` 64 px — bilinçli sapma.
+- **Punto:** ISO 9241-303 min 16 yay-dk → gövde 20 px, buton 22-26, sayısal 34.
+  Sayısal alanlar monospace (sütun hizası).
+- **Uzun işlem:** ekranı kapatan opak modal YOK; ilerleme şeridi aksiyon çubuğunun
+  üstüne biner, harita/durum canlı kalır. İlerleme **motor bazlı** (modül bazlı olursa
+  1-2 modülde çubuk 150 sn kıpırdamaz), geçen + tahmini kalan süre gösterilir.
+- **Durum şeridi** (`StatusStrip.qml`) her sekmede sabit: arıza/bağlantı/referans.
+- `font.families` bu Qt sürümünde **yok**, yalnız `font.family` (bkz. `Theme.fontMono`).
+
 ### Grid ↔ motor eşlemesi (kablolama için)
 
 `controller._slave_values()` satır-öncelikli dizer, `ARR:id:p1..p9` sırası budur:

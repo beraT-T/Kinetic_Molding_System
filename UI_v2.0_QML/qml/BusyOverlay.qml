@@ -2,82 +2,111 @@ import QtQuick
 import QtQuick.Layouts
 import "Theme.js" as Theme
 
-// Hareket sururken tum ekrani kaplayan ilerleme katmani.
-// Kazara dokunmayi engeller (motorlar hareket halinde) ve fazi gosterir.
-// NOT: protokol v5.1'de STOP/ABORT komutu YOK -> iptal butonu konulamaz;
-// acil durum fiziksel guc kesme ile yapilir.
+// Hareket sirasindaki ilerleme paneli.
+// TASARIM KARARI (ISA-101 / NN-g): hareket sururken proses durumu GORUNUR
+// kalmalidir. Bu yuzden ekrani kaplayan opak modal KULLANILMAZ; panel altta
+// serit olarak durur, isi haritasi ve durum seridi canli izlenebilir.
+// Kazara dokunma, aksiyon butonlarinin devre disi birakilmasiyla onlenir.
 Item {
     id: root
-    anchors.fill: parent
     visible: app.busy
     z: 1500
 
     property string phase: ""
     property int done: 0
     property int total: 0
+    property int elapsed: 0
+    property int remaining: -1
 
     Connections {
         target: app
-        function onOpProgress(label, done, total) {
-            root.phase = label
-            root.done = done
-            root.total = total
+        function onOpProgress(label, d, t, el, rem) {
+            root.phase = label; root.done = d; root.total = t
+            root.elapsed = el; root.remaining = rem
         }
     }
 
     Rectangle {
         anchors.fill: parent
-        color: "#d9000000"                 // #AARRGGBB
-        MouseArea { anchors.fill: parent }  // dokunuslari yut
-    }
+        color: Theme.panel
+        border.color: Theme.warn
+        border.width: 2
+        radius: Theme.radius
 
-    ColumnLayout {
-        anchors.centerIn: parent
-        width: Math.min(parent.width * 0.5, 620)
-        spacing: 20
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 14
+            spacing: 10
 
-        Text {
-            Layout.fillWidth: true
-            text: root.phase.length ? root.phase : "Islem suruyor"
-            color: Theme.text
-            font.bold: true
-            font.pixelSize: Theme.fsTitle
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-        }
-
-        Text {
-            Layout.fillWidth: true
-            text: root.total > 0 ? ("Tamamlanan modul: " + root.done + " / " + root.total) : ""
-            color: Theme.accent2
-            font.pixelSize: Theme.fsButtonLg
-            font.bold: true
-            horizontalAlignment: Text.AlignHCenter
-        }
-
-        // ilerleme cubugu
-        Rectangle {
-            Layout.fillWidth: true
-            height: 14
-            radius: 7
-            color: Theme.panelHi
-            Rectangle {
-                height: parent.height
-                radius: parent.radius
-                color: Theme.green
-                width: root.total > 0 ? parent.width * (root.done / root.total) : 0
-                Behavior on width { NumberAnimation { duration: 220 } }
+            // faz + sayilar
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gapMin
+                Text {
+                    text: root.phase.length ? root.phase : "Islem suruyor"
+                    color: Theme.text; font.bold: true
+                    font.pixelSize: Theme.fsTitle
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: root.done + " / " + root.total + " motor"
+                    color: Theme.text; font.bold: true
+                    font.pixelSize: Theme.fsValue
+                    font.family: Theme.fontMono
+                }
             }
-        }
 
-        Text {
-            Layout.fillWidth: true
-            text: "Hareket yavastir (tam strok ~150 sn). Lutfen bekleyin.\nDurdurmak icin cihazin gucunu kesin."
-            color: Theme.textDim
-            font.pixelSize: Theme.fsSmall
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            lineHeight: 1.3
+            // ilerleme cubugu (notr - yesil "normal" anlamina saklanir)
+            Rectangle {
+                Layout.fillWidth: true
+                height: 18
+                radius: Theme.radiusSm
+                color: Theme.panelHi
+                border.color: Theme.border
+                Rectangle {
+                    height: parent.height
+                    radius: parent.radius
+                    color: Theme.text
+                    width: root.total > 0 ? parent.width * (root.done / root.total) : 0
+                    Behavior on width { NumberAnimation { duration: 300 } }
+                }
+            }
+
+            // sureler (NN/g: 1 dk ustu islemde gecen + tahmini kalan)
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    text: "Gecen " + Theme.clock(root.elapsed)
+                    color: Theme.textDim; font.pixelSize: Theme.fsBody
+                    font.family: Theme.fontMono
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: root.remaining >= 0 ? ("Tahmini kalan " + Theme.clock(root.remaining))
+                                              : "Tahmini kalan --:--"
+                    color: Theme.textDim; font.pixelSize: Theme.fsBody
+                    font.family: Theme.fontMono
+                }
+            }
+
+            // DURDURMA TALIMATI - makinenin tek durdurma yolu, en okunur metin olmali
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: stopRow.implicitHeight + 16
+                radius: Theme.radiusSm
+                color: Theme.alarm
+                RowLayout {
+                    id: stopRow
+                    anchors.centerIn: parent
+                    spacing: Theme.gapMin
+                    Text { text: "⛔"; font.pixelSize: Theme.fsButtonLg }
+                    Text {
+                        text: "DURDURMAK ICIN CIHAZIN GUCUNU KESIN"
+                        color: "#ffffff"; font.bold: true
+                        font.pixelSize: Theme.fsButtonLg
+                    }
+                }
+            }
         }
     }
 }

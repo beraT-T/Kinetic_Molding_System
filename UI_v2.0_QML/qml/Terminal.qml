@@ -19,7 +19,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gapMin
-            Rectangle { width: 8; height: 8; radius: 4; color: Theme.green }
+            Rectangle { width: 8; height: 8; radius: 4; color: Theme.textFaint }
             Text { text: "SERIAL MONITOR"; color: Theme.textDim; font.bold: true; font.pixelSize: Theme.fsSmall }
             Item { Layout.fillWidth: true }
             TouchButton {
@@ -42,9 +42,9 @@ Rectangle {
                 wrapMode: Text.WrapAnywhere
                 font.family: "monospace"
                 font.pixelSize: Theme.fsSmall
-                color: line.indexOf("→") >= 0 ? Theme.accent2
-                     : line.indexOf("←") >= 0 ? Theme.green
-                     : line.indexOf("HATA") >= 0 ? Theme.red
+                color: line.indexOf("→") >= 0 ? Theme.text
+                     : line.indexOf("←") >= 0 ? Theme.textDim
+                     : line.indexOf("HATA") >= 0 ? Theme.alarm
                      : Theme.textDim
             }
             onCountChanged: positionViewAtEnd()
@@ -68,7 +68,7 @@ Rectangle {
             }
             TouchButton {
                 text: "Gonder"
-                color: Theme.accent
+                color: Theme.actionPrimary
                 onClicked: { if (cmdField.text.length) { app.sendRaw(cmdField.text); cmdField.text = "" } }
             }
         }
