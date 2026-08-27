@@ -85,38 +85,13 @@ ApplicationWindow {
     // ---- bilgi/hata penceresi (islem sonucu) ----
     AppDialog { id: infoDialog }
 
-    // ---- acilis uyarisi: referans alindi mi? ----
-    AppDialog {
-        id: startupDialog
-        onAccepted: app.startHomeAll()
-    }
-
     // Islem bitince sonucu goster (basarili / ariza / zaman asimi)
+    // NOT: referans uyarisi baglantida DEGIL, BASLA'ya basinca cikar (MainPage).
     Connections {
         target: app
         function onOperationFinished(ok, title, message) {
             infoDialog.show(title, message, "Tamam", "",
                             ok ? Theme.green : Theme.red)
         }
-    }
-
-    // Sistem baslatildiginda (baglanti + modul bulununca) referans uyarisi.
-    // Her baglantida bir kez sorulur.
-    property bool homeAsked: false
-    Connections {
-        target: app
-        function onConnectedChanged() { if (!app.connected) win.homeAsked = false }
-        function onActiveSlavesChanged() { win.maybeAskHome() }
-        function onHomedChanged() { win.maybeAskHome() }
-    }
-    function maybeAskHome() {
-        if (homeAsked || !app.connected || app.busy) return
-        if (app.activeSlaves.length === 0 || app.allHomed) return
-        homeAsked = true
-        startupDialog.show("Referans alinmadi",
-            "Sistem baslatildi ve eksenler henuz referans almadi.\n" +
-            "Guvenli calisma icin once tum modullerde Home yapilmalidir.\n\n" +
-            "Simdi referans alinsin mi? (yaklasik 150 sn)",
-            "Home Yap", "Simdi Degil", Theme.orange)
     }
 }

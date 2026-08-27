@@ -54,16 +54,20 @@ Item {
                 spacing: Theme.gapMin
                 Text { text: "Moduller"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                 GridLayout {
+                    id: modGrid
                     Layout.fillWidth: true
                     columns: 4
                     rowSpacing: Theme.gapMin; columnSpacing: Theme.gapMin
+                    // karolar KARE: hucre genisligi = (grid - 3*bosluk)/4
+                    readonly property real cellSize:
+                        Math.max(Theme.touchMin, (width - 3 * columnSpacing) / 4)
                     Repeater {
                         model: 16
                         delegate: Rectangle {
                             id: cell
                             required property int index
                             Layout.fillWidth: true
-                            Layout.preferredHeight: Theme.touchMin + 8
+                            Layout.preferredHeight: modGrid.cellSize
                             radius: Theme.radiusSm
                             property int sid: index + 1
                             property bool sel: app.currentSlaveId === sid
@@ -194,6 +198,7 @@ Item {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Text { text: "Motor " + (index + 1); color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
+                                        Text { text: "mm · yaz + Enter"; color: Theme.textDim; font.pixelSize: Theme.fsSmall }
                                         Item { Layout.fillWidth: true }
                                         Rectangle {
                                             radius: Theme.radiusSm
@@ -239,9 +244,6 @@ Item {
                                             function onApplyVals(arr) { sp.value = arr[index] }
                                         }
                                     }
-                                    Text { text: "mm  ·  yaz + Enter"; color: Theme.textDim; font.pixelSize: Theme.fsSmall
-                                        Layout.alignment: Qt.AlignHCenter }
-
                                     Item { Layout.fillHeight: true; Layout.fillWidth: true }
 
                                     Button {
@@ -263,7 +265,7 @@ Item {
 
             Terminal {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 176
+                Layout.preferredHeight: 140
                 logModel: page.logModel
             }
         }

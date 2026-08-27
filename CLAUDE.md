@@ -22,22 +22,45 @@ Host (PC / Raspberry Pi 5)
    │ USB seri
 Blue Pill (STM32F103)  — ŞEFFAF RS485 köprüsü, 9600 baud
    │ RS485 (adresli)
-Slave modülü = 2× Black Pill (STM32F401RC*, HSE 25MHz)
+Slave modülü = 2× Black Pill (STM32F401RC veya F411CEU6*, HSE 25MHz)
    ├─ U3 "yönetici": RS485 dinler + motor 6-9 (yerel) + flash slave ID
    │     └─ USART2 115200 ──> U2
    └─ U2 "işçi": sadece USART2 + motor 1-5
 ```
 
-\* `platformio.ini` board = `genericSTM32F401RC`. Kart fiziksel olarak F411 ise board satırı
-güncellenmeli (kod aynı kalır; F411'i 84 MHz'de sürer, zararsız).
+\* İki ayrı firmware seti var: F401RC için `Adaptif_kalip_v5_*`, F411CEU6 (WeAct BlackPill V3.0)
+için `Adaptif_kalip_v5f411_*`. **Sadece board satırını değiştirmek yetmez** — F411'de flash
+sektör haritası (SETID) ve saat/voltaj ölçeği farklı. Ayrıntı: `V5F411_NOTU.md`.
 
 ### Pin / timer haritası (encoder mode)
-- **U2 (motor 1-5):** TIM1(PA8/PA9,16bit), TIM2(PA5/PB3,32bit), TIM3(PA6/PA7,16bit),
-  TIM4(PB6/PB7,16bit), TIM5(PA0/PA1,32bit). Motor F/R: M1 PB14/PB15, M2 PB4/PB5,
-  M3 PB0/PB1, M4 PB8/PB9, M5 PC14/PC15.
-- **U3 (motor 6-9):** TIM2,TIM3,TIM4,TIM5 (TIM1 yok; PA8/9/10 RS485'te). Motor F/R: M6 PB4/PB5,
-  M7 PB0/PB1, M8 PB8/PB9, M9 PC14/PC15. RS485 DE/RE: PA8, USART1 PA9/PA10. USART2 PA2/PA3 → U2.
-- LED: PC13 (her iki kart).
+
+**Pinler PCB'ye sabittir — kodda değiştirilemez.** Sürümler arasında değişen tek şey
+hangi pin çiftine hangi motor numarasının verildiğidir.
+
+Encoder timer'ları: TIM1(PA8/PA9,16bit), TIM2(PA5/PB3,32bit), TIM3(PA6/PA7,16bit),
+TIM4(PB6/PB7,16bit), TIM5(PA0/PA1,32bit). U3'te TIM1 yok (PA8/9/10 RS485'te).
+U3: RS485 DE/RE PA8, USART1 PA9/PA10. USART2 PA2/PA3 (U3↔U2). LED PC13 (her iki kart).
+
+| Kart | Sürüş F/R | Encoder | v5.1 no | **v5f411 no** |
+|---|---|---|---|---|
+| U2 | PB14/PB15 | TIM1 | M1 | **M5** |
+| U2 | PB4/PB5 | TIM2 | M2 | **M6** |
+| U2 | PB0/PB1 | TIM3 | M3 | **M9** |
+| U2 | PB8/PB9 | TIM4 | M4 | **M8** |
+| U2 | PC14/PC15 | TIM5 | M5 | **M7** |
+| U3 | PB4/PB5 | TIM2 | M6 | **M4** |
+| U3 | PB0/PB1 | TIM3 | M7 | **M1** |
+| U3 | PB8/PB9 | TIM4 | M8 | **M2** |
+| U3 | PC14/PC15 | TIM5 | M9 | **M3** |
+
+- **v5f411 numaralandırması kasadaki fiziksel soket sırasına göredir** (soket 1 = M1 …
+  soket 9 = M9). v5.1 sırasına göre soketler 7-8-9-6-1-2-5-4-3 diye gidiyordu, düzeltildi.
+- Sonuç: **v5f411'de U3 motor 1-4'ü, U2 motor 5-9'u tutar** (v5.1'de tersiydi).
+  Kademe slotları: U3 → 0..3, U2 → 4..8. Host protokolü değişmedi (hep 1-9).
+- **PC14/PC15 tuzağı** (v5.1'de M5/M9, v5f411'de M7/M3): Bunlar OSC32_IN/OUT ayakları;
+  düz GPIO olarak çalışmalarının tek sebebi firmware'in LSE'yi hiç açmaması (core LSE'yi
+  yalnız RTC istendiğinde açar). Projeye RTC / `LSE_CLOCK` eklenirse bu iki motor
+  **sessizce ölür** — hata vermez, sadece sürülmez.
 
 ## Kalibrasyon gerçekleri (DOĞRULANDI — donanımdan ölçüldü)
 
@@ -66,6 +89,13 @@ güncellenmeli (kod aynı kalır; F411'i 84 MHz'de sürer, zararsız).
   - **1 sn kademeli eş zamanlı:** `STAGGER_MS=1000`. Slot: motor 1-5 → 0..4, motor 6-9 → 5..8.
   - U2 beklenirken U3 yerel motorları servis edilir (kilitlenme yok).
   - Detay: `V5_MIMARI_NOTU.md`.
+- **v5f411 (F411CEU6 portu):** `Adaptif_kalip_v5f411_U3_4motor`, `Adaptif_kalip_v5f411_U2_5motor`.
+  v5.1 ile **mantık/protokol birebir aynı**; sadece 4 donanım farkı:
+  board `blackpill_f411ce`; saat 84→96 MHz (VOS Scale1, 3 wait state, PLL M25/N192/P2/Q4);
+  `AddrToSector()` 512 KB sektör haritası (**SETID bunsuz F411'de çalışmaz** — eski kod
+  sektör 5 döndürüyordu, ID ise sektör 7'de). Pinler v5.1 ile aynı, ama **motor numaraları
+  fiziksel soket sırasına göre yeniden atandı** → U3 = motor 1-4, U2 = motor 5-9.
+  Detay: `V5F411_NOTU.md`.
 
 ## Protokol v5.1 (host → U3, RS485)
 
@@ -83,6 +113,8 @@ güncellenmeli (kod aynı kalır; F411'i 84 MHz'de sürer, zararsız).
 
 Durum harfleri: `I`=idle, `M`=moving, `H`=homing, `S`=settled (tamam), `F`=fault.
 U3↔U2 arası: `INTERNAL_MOV/ALL/ARR/HOME/HOMEALL/GETPOS/STAT`.
+İç bağlantıda da host motor numarası kullanılır (çeviri yok): v5.1'de 1-5, v5f411'de 5-9.
+`STAT` token sırası her zaman host numarasına göre M1→M9'dur.
 
 **Async kural:** komut hemen ack döner; bitiş **`STAT` poll** ile anlaşılır (hareket ~150s).
 Bir slave'e ARR/HOME gönderdikten sonra tüm tokenlar `S` olana kadar `STAT` ile beklenmeli;
@@ -95,7 +127,39 @@ home bitmeden hareket komutu göndermek sıfır referansını bozar.
   hızlandırmalı. `main.py` → `backend/controller.py` (QML köprüsü) + `serial_manager.py` +
   `stl_interpolator.py`; `qml/` arayüz. Protokol v5.1. Çalıştırma: `python3 main.py [--fullscreen]`.
   Ayrıntı: `UI_v2.0_QML/README.md`. (Genelde `ui_v2.0` git branch'inde tutulur.)
-- STL interpolasyonu: trimesh + scipy `LinearNDInterpolator`, merkez 300mm'ye offset, 0–600 clip.
+- STL interpolasyonu: trimesh + scipy `LinearNDInterpolator`, merkez 300mm'ye offset,
+  **10–590 mm clip** (güvenlik marjı — aşağıya bak).
+
+### Grid ↔ motor eşlemesi (kablolama için)
+
+`controller._slave_values()` satır-öncelikli dizer, `ARR:id:p1..p9` sırası budur:
+
+```
+Modülün 3x3 alanı           12x12 içinde modüller (4x4)
+ M1  M2  M3                   1   2   3   4
+ M4  M5  M6                   5   6   7   8
+ M7  M8  M9                   9  10  11  12
+                             13  14  15  16
+```
+Yani blok içi (satır 0, sütun 0) = **Motor 1**; Modül 1 = satır 0-2 / sütun 0-2.
+Kasadaki soket sırası = motor numarası (soket 1 = M1 … soket 9 = M9, v5f411).
+Bu **mantıksal** eşleme; modülün fiziksel yönü ters monte edilmişse Tester'dan tek motor
+sürerek bir kez doğrula.
+
+### Güvenlik marjı: tam stroka komut verme (sahte FAULT sebebi)
+
+Hedef **0 veya 600 mm** (tam strok) verilirse aktüatör fiziksel dayanmaya oturur, encoder
+durur ve v5.1 stall koruması (1500 ms'de <10 puls) bunu **FAULT** sanar → sahte arıza.
+Belirti: STL'de 600'e clip'lenen hücrelerin motorları (ör. modül 1 / motor 1-2) sürekli
+arıza verir. Çözüm firmware'de değil, **interpolasyonda**: `stl_interpolator.SAFE_MARGIN_MM`
+(=10) ile aralık 10–590'a kırpılır.
+
+### STAT poll'u sıralı olmalı (9600 baud)
+
+RS485 köprüsü 9600 baud ≈ 960 bayt/sn; bir STAT sorgu+cevap ≈ 63 bayt ≈ 66 ms.
+Tüm bekleyen modüllere aynı anda STAT atmak 16 modülde ≈ 1 sn hat trafiği (%70+ doluluk)
+→ çakışma, bozuk satır, yanlış/gecikmeli bitiş teyidi. UI bu yüzden **round-robin** poll eder
+(tick başına tek modül, `OP_POLL_MS`) ve komut dağıtımı sürerken poll yapmaz.
 
 ## Raspberry Pi dağıtımı (UI_v2.0_QML)
 
@@ -143,9 +207,10 @@ o da kullanıcıya sorarak. config.txt/sudoers/systemd/venv/PySide6 sürümüne 
 
 ## Derleme / yükleme
 
-- PlatformIO: `pio run -e genericSTM32F401RC` (build), `pio run -t upload` (ST-Link ile yükle),
-  `pio device monitor -b 115200` (seri).
-- Sandbox/bu makinede PlatformIO ve donanım YOK → **derleme ve test fiziksel olarak kullanıcıda yapılır.**
+- PlatformIO **bu makinede kurulu**: `~/.platformio/penv/bin/pio` (PATH'te değil, tam yol gerekir).
+  `pio run -d <proje>` (build), `pio run -d <proje> -t upload` (ST-Link), `pio device monitor -b 115200`.
+  Env adları: F401 projelerinde `genericSTM32F401RC`, v5f411'de `blackpill_f411ce`.
+- **Derleme burada doğrulanabilir; donanım YOK → flash'lama ve gerçek test kullanıcıda.**
 
 ## DONANIM-DÖNGÜSÜ (çok önemli)
 

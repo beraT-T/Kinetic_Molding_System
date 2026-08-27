@@ -29,12 +29,22 @@ Item {
         property string action: ""
         function ask(what) {
             confirmDialog.action = what
-            if (what === "production")
-                show("Uretimi baslat",
-                     "Once tum bagli modullerde referans (home) alinacak, " +
-                     "ardindan model sekli uygulanacak.\n\n" +
-                     "Toplam sure yaklasik 5 dakika. Kalip alanini bosaltin.",
-                     "Basla", "Iptal", Theme.green)
+            if (what === "production") {
+                // Referans uyarisi burada cikar (baglantida degil).
+                // Tum moduller referans aldiysa home tekrarlanmaz.
+                if (!app.allHomed)
+                    show("Referans alinmadi",
+                         "Bazi moduller bu oturumda henuz referans almadi.\n" +
+                         "Once tum bagli modullerde home yapilacak, ardindan model " +
+                         "sekli uygulanacak.\n\n" +
+                         "Toplam sure yaklasik 5 dakika. Kalip alanini bosaltin.",
+                         "Home Yap ve Basla", "Iptal", Theme.orange)
+                else
+                    show("Uretimi baslat",
+                         "Tum moduller referans almis durumda; dogrudan model sekli " +
+                         "uygulanacak (~150 sn).\n\nKalip alanini bosaltin.",
+                         "Basla", "Iptal", Theme.green)
+            }
             else if (what === "home")
                 show("Referans al",
                      "Tum bagli modullerde tum eksenler sifira inecek (~150 sn).",
@@ -164,14 +174,20 @@ Item {
                 radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
-                Column {
+                ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: 8
                     Text { text: "12 × 12 Pozisyon Haritasi (144 motor)"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
-                    Heatmap {
-                        width: parent.width
-                        height: parent.height - 28
+                    // Harita KARE olmali (12x12 grid) -> hucreler kare cikar
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Heatmap {
+                            anchors.centerIn: parent
+                            width: Math.min(parent.width, parent.height)
+                            height: width
+                        }
                     }
                 }
             }

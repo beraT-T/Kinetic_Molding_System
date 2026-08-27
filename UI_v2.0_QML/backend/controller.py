@@ -20,7 +20,10 @@ def slave_grid_origin(slave_id):
 
 
 # Islem (op) sabitleri
-OP_POLL_MS      = 1500     # STAT poll araligi
+# NOT: RS485 koprusu 9600 baud (~960 bayt/sn). Bir STAT sorgu+cevap ~63 bayt ~66 ms.
+# Tum bekleyen modullere ayni anda STAT atmak 16 modulde ~1 sn hat trafigi demek ->
+# cakisma/bozuk satir riski. Bu yuzden poll SIRALI (round-robin): tick basina TEK modul.
+OP_POLL_MS      = 1000     # STAT poll araligi (tick basina 1 modul)
 OP_STAGGER_MS   = 80       # modul modul komut gonderim araligi (UI bloklamaz)
 OP_TIMEOUT_S    = 300.0    # home ~200s, hareket ~150s -> pay birakildi
 DEMO_MOVE_S     = 6.0      # demo modda sahte hareket suresi
@@ -226,13 +229,16 @@ class Controller(QObject):
 
     @Slot()
     def startProduction(self):
-        """Ana uretim akisi: ONCE HOME (tum bagli moduller) SONRA sekli uygula."""
+        """Ana uretim akisi. Referans alinmamis modul varsa ONCE HOME yapilir;
+        tum moduller bu oturumda referans aldiysa dogrudan sekil uygulanir."""
         if not self._guard_op():
             return
         if not self._grid:
             self.operationFinished.emit(False, "Model yok", "Once bir STL yukleyip hesaplayin.")
             return
-        self._start_op(["home", "send"], list(self._active))
+        targets = list(self._active)
+        need_home = any(s not in self._homed for s in targets)
+        self._start_op((["home", "send"] if need_home else ["send"]), targets)
 
     @Slot()
     def startHomeAll(self):
@@ -270,6 +276,7 @@ class Controller(QObject):
         self._op = {
             "seq": list(seq), "phase": None, "targets": list(targets),
             "pending": set(), "t0": 0.0, "step": 0, "nsteps": len(seq), "label": "",
+            "dispatching": False, "poll_i": 0,
         }
         self._next_phase()
 
@@ -286,6 +293,8 @@ class Controller(QObject):
         op["label"] = "Referans aliniyor" if phase == "home" else "Sekil uygulaniyor"
         op["pending"] = set(op["targets"])
         op["t0"] = time.time()
+        op["poll_i"] = 0
+        op["dispatching"] = True     # komutlar giderken poll yapma (hat cakismasin)
         self._log(f"{op['label']} ({op['step']}/{op['nsteps']}) - {len(op['targets'])} modul")
         self.busyChanged.emit()
         self._emit_progress()
@@ -294,7 +303,10 @@ class Controller(QObject):
 
     def _dispatch(self, phase, targets, i):
         """Komutlari modul modul kademeli gonder (QTimer - UI bloklamaz)."""
-        if not self._op or i >= len(targets):
+        if not self._op:
+            return
+        if i >= len(targets):
+            self._op["dispatching"] = False    # hat bosaldi, artik poll edilebilir
             return
         sid = targets[i]
         if phase == "home":
@@ -316,8 +328,16 @@ class Controller(QObject):
             self._finish_op(False, "Zaman asimi",
                             f"{op['label']} tamamlanmadi. Yanit vermeyen modul: {kalan}")
             return
-        for sid in sorted(op["pending"]):
-            self.requestStatus(sid)
+        if op["dispatching"]:
+            return                       # komutlar hala gidiyor, hatti mesgul etme
+        pend = sorted(op["pending"])
+        if not pend:
+            return
+        # SIRALI poll: tick basina tek modul (9600 baud hattini bogmamak icin)
+        op["poll_i"] %= len(pend)
+        sid = pend[op["poll_i"]]
+        op["poll_i"] = (op["poll_i"] + 1) % len(pend)
+        self.requestStatus(sid)
 
     def _op_status(self, sid, toks):
         """STAT cevabini aktif isleme isle (tum tokenlar S -> o modul bitti)."""
@@ -328,10 +348,15 @@ class Controller(QObject):
         if len(letters) < 9:
             return
         if "F" in letters:
-            motor = letters.index("F") + 1
+            # ilk arizali degil, TUM arizali motorlari bildir
+            faulty = [str(i + 1) for i, l in enumerate(letters) if l == "F"]
+            coklu = len(faulty) > 1
             self._finish_op(False, "ARIZA",
-                            f"Modul {sid} / Motor {motor} ariza verdi. "
-                            "Encoder kablosunu ve mekanigi kontrol edin.")
+                            f"Modul {sid} / Motor {', '.join(faulty)} ariza verdi"
+                            + (" (birden fazla motor)" if coklu else "") + ".\n"
+                            "Encoder kablosunu ve mekanigi kontrol edin. "
+                            "Hedef tam stroka (0 veya 600 mm) cok yakinsa aktuator "
+                            "fiziksel sinira dayanmis olabilir.")
             return
         if all(l == "S" for l in letters):
             op["pending"].discard(sid)

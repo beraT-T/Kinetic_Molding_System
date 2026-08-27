@@ -46,6 +46,24 @@ Item {
                 ctx.beginPath(); ctx.moveTo(k * 3 * cw, 0); ctx.lineTo(k * 3 * cw, height); ctx.stroke()
                 ctx.beginPath(); ctx.moveTo(0, k * 3 * ch); ctx.lineTo(width, k * 3 * ch); ctx.stroke()
             }
+
+            // modul numarasi: her 3x3 blogun ORTA hucresine (hizli teshis icin)
+            // orta hucre = blok icindeki (1,1) -> merkez (mc*3+1.5)*cw
+            ctx.textAlign = "center"
+            ctx.textBaseline = "middle"
+            ctx.font = "bold " + Math.max(11, Math.round(cw * 0.40)) + "px sans-serif"
+            ctx.lineWidth = 3
+            ctx.strokeStyle = "rgba(0,0,0,0.75)"       // kontrast icin koyu kontur
+            ctx.fillStyle = "rgba(255,255,255,0.95)"
+            for (var mr = 0; mr < 4; mr++) {
+                for (var mc = 0; mc < 4; mc++) {
+                    var sid = mr * 4 + mc + 1
+                    var tx = (mc * 3 + 1.5) * cw
+                    var ty = (mr * 3 + 1.5) * ch
+                    ctx.strokeText(sid, tx, ty)
+                    ctx.fillText(sid, tx, ty)
+                }
+            }
         }
     }
 
