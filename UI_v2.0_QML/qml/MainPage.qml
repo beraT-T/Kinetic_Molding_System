@@ -18,6 +18,9 @@ Item {
         onAccepted: app.loadStl(selectedFile)
     }
 
+    // Haritadan modul ayrintisi (hucreler < 80 px -> buyuk hucreli ayrinti penceresi)
+    ModuleDetail { id: moduleDetail; objectName: "moduleDetail" }
+
     // Hareket baslatmadan once onay (fiziksel makine hareket edecek).
     // Onay metni: model adi, hedef modul listesi, motor sayisi (v2.2). "Vazgeç" yalniz
     // pencereyi kapatir; hicbir hareketi iptal etmez (bu arayuzden hareket durdurulamaz).
@@ -228,9 +231,15 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "MODEL HEDEFLERİ — ölçülen konum değildir  ·  12 × 12"
+                        text: "MODEL HEDEFLERİ — ölçülen konum değildir"
                         color: Theme.textDim; font.bold: true
                         font.pixelSize: Theme.fsSmall; font.letterSpacing: 1
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Modül ayrıntısı (hedef ve son ölçüm) için haritaya dokunun"
+                        color: Theme.textFaint; font.pixelSize: Theme.fsSmall
                         elide: Text.ElideRight
                     }
 
@@ -244,6 +253,7 @@ Item {
                             spacing: Theme.gapMin
                             Heatmap {
                                 id: hm
+                                onModuleTapped: function(s) { moduleDetail.open(s) }
                                 width: Math.max(120, Math.min(mapArea.width - 84, mapArea.height))
                                 height: width
                             }

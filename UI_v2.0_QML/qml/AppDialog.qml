@@ -6,6 +6,8 @@ import "Theme.js" as Theme
 // Dokunmatik olculu modal uyari/onay penceresi.
 // show(baslik, mesaj, kabulMetni, redMetni, renk) ile acilir.
 // redMetni bos ise tek butonlu bilgi penceresi olur.
+// v2.2: tek butonlu pencerede buton "Kapat" (yalniz kapatir); onay penceresinde red
+// butonu "Vazgeç" (yalniz kapatir, hicbir hareketi iptal ETMEZ).
 Item {
     id: root
     anchors.fill: parent
@@ -14,7 +16,7 @@ Item {
 
     property string title: ""
     property string message: ""
-    property string acceptText: "Tamam"
+    property string acceptText: "Kapat"
     property string rejectText: ""
     property color accentColor: Theme.actionPrimary
 
@@ -24,7 +26,7 @@ Item {
     function show(t, m, okText, cancelText, col) {
         root.title = t || ""
         root.message = m || ""
-        root.acceptText = okText || "Tamam"
+        root.acceptText = okText || "Kapat"
         root.rejectText = cancelText || ""
         root.accentColor = col || Theme.actionPrimary
         root.visible = true

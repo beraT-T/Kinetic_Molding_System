@@ -8,7 +8,7 @@ _(gece sonunda doldurulacak — biçim: GOREV.md bölüm E)_
 
 ## Durum
 - Branch: `ui_v2.2` (ui_v2.0 @ 0733c9c'den açıldı)
-- Aktif faz: Faz 4
+- Aktif faz: Faz 5
 - Son commit: (Faz 0 commit'i)
 
 ## Başlangıç çalışma ağacı (dokunulmayacak)
@@ -124,6 +124,15 @@ U2 yavaşsa ~1,6 sn, en çok 2,5 sn); terminal/Bakım sorgusu başına ≤2,8 sn
   "Model hedefleri — ölçülen konum değildir". Onay pencerelerinde model adı, modül listesi, motor
   sayısı, beklenen liste (Faz 4b maddesi). `Theme.dative/accusative` (Modül 3'e, Motor 6'yı).
   BusyOverlay içerik yüksekliğinde. `tests/test_model.py` (12). **93 test OK.**
+- 06:55 — Faz 4 — Metin tablosu (16 satır) ve ek dil/akış (7 madde) aşağıdaki kapsama tablosunda
+  satır satır. Yeni: alarm kayıtlarında **neden / etki / adım** (`ALARM_HELP`, AlarmPanel'de),
+  `--demo` için kalıcı **SİMÜLASYON** bandı, `AppDialog` tek butonda "Kapat", haritada modül
+  çerçevesi + dokununca `ModuleDetail.qml` (büyük hücreli hedef/ölçüm), harita ipucu Türkçe
+  (Satır/Sütun/Modül/Motor), F yardım metni "sürüşü kesildi (firmware bildirimi)" — "durdu"
+  iddiası yok. `tests/test_texts.py` (eski metinler yok, gerekli metinler var, "doğrulandı"/"durdu"
+  pozitif iddiası yok, "güvenli" yalnız olumsuz, ASCII'leştirilmiş Türkçe kelime yok).
+  Ekran görüntüleri (offscreen 1920×1080, demo): `docs/v2.2/ekran/01…09` (3D alan boş — beklenen).
+  **99 test OK.**
 
 ## ENGELLENDİ / STASH
 <!-- ENGELLENDİ: <komut> — <sebep>  |  STASH: v22-wip-<konu> — <dosyalar> — <neden> -->

@@ -26,7 +26,7 @@ Rectangle {
                 font.letterSpacing: 1.5
             }
             Text {
-                text: "Kontrol Sistemi v2.2"
+                text: "Kontrol Sistemi v2.2" + (app.demoMode ? " · SİMÜLASYON" : "")
                 color: Theme.textDim; font.pixelSize: Theme.fsSmall
             }
         }

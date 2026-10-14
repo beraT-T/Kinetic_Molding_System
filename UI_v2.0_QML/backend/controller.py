@@ -55,6 +55,39 @@ STATE_TEXT = {"S": "hedefe ulaştı", "M": "hareket", "H": "referans alıyor",
               "F": "ARIZA", "I": "boşta"}
 
 
+# Alarm turu -> operatore neden / etki / adim (v2.2, INCELEME 4b). Uydurma talimat yok:
+# fiziksel durdurma/enerji ayirma proseduru tanimli DEGIL (GUVENLIK_ACIK_KONULAR.md).
+ALARM_HELP = {
+    "F": ("Neden: firmware motoru ARIZA durumuna aldı (ör. hareket komutunda 1,5 sn içinde "
+          "yeterli encoder darbesi yok: sıkışma, encoder kablosu, mekanik dayanma).\n"
+          "Etki: firmware bildirimine göre o motorun sürüşü kesildi; diğer motorların "
+          "durduğu doğrulanmadı. Bütün hareket kilitli.\n"
+          "Adım: Kayıt, modül arızasız taze durum bildirince kapanır (firmware ARIZA'dan yalnız "
+          "yeni komut veya modülün yeniden başlaması ile çıkar). Müdahale yetkin bakım "
+          "personelince yapılmalı."),
+    "U2": ("Neden: modülün ikinci kartı (U2) birinci karta (U3) cevap vermedi.\n"
+           "Etki: U2'ye bağlı motorların durumu bilinmiyor; bütün hareket kilitli.\n"
+           "Adım: Kartlar arası bağlantı bakım personelince incelenmeli; tam durum cevabı "
+           "gelince kayıt kapanır."),
+    "COMM": ("Neden: modül art arda sorgulara cevap vermedi (kablo, enerji, adres).\n"
+             "Etki: modülün hareket edip etmediği bilinmiyor; bütün hareket kilitli.\n"
+             "Adım: Haberleşme düzelip geçerli durum gelince kayıt kapanır. Modül bilerek "
+             "çıkarıldıysa uygulama yeniden başlatılmalı."),
+    "SYNC": ("Neden: komutun kabulü/tamamlanması doğrulanamadı, bağlantı kesildi veya modül "
+             "yeniden başladı.\n"
+             "Etki: modülün durumu belirsiz; bütün hareket kilitli. Komut otomatik tekrar "
+             "gönderilmez.\n"
+             "Adım: Modül iki ardışık sorguda tutarlı ve hareketsiz durum bildirince kayıt "
+             "kendiliğinden kapanır."),
+    "LINK": ("Neden: seri bağlantı koptu veya kesildi.\n"
+             "Etki: hareketin durduğu doğrulanamıyor; referans bilgisi geçersiz.\n"
+             "Adım: Yeniden bağlanın ve 'Modülleri bul'. Hareket otomatik sürdürülmez."),
+    "DATA": ("Neden: modülden şema dışı veya eksik durum cevabı geldi.\n"
+             "Etki: motor durumları bilinmiyor; bütün hareket kilitli.\n"
+             "Adım: Geçerli tam cevap gelince kayıt kapanır."),
+}
+
+
 class _RepeatTimer:
     """Tekrarlayan zamanlayici (enjekte edilen timer servisi uzerinde)."""
 
@@ -749,7 +782,7 @@ class Controller(QObject):
             "key": key, "kind": kind, "level": int(level), "sid": sid or 0,
             "motor": motor or 0, "text": text, "active": True, "acked": False,
             "since": time.strftime("%H:%M:%S", time.localtime(self._ts.wall())),
-            "resolvedAt": "", "seq": self._alarm_seq,
+            "resolvedAt": "", "seq": self._alarm_seq, "help": ALARM_HELP.get(kind, ""),
         }
         self._log(("ALARM: " if level >= 2 else "UYARI: ") + text)
         if kind == "F" and self._op is not None:
@@ -792,7 +825,7 @@ class Controller(QObject):
 
     @Slot()
     def clearFault(self):
-        """Eski ad (v2.0 ONAYLA). v2.2: kaydi silmez, yalniz onaylar."""
+        """v2.0 uyumlulugu icin eski slot adi. v2.2: kaydi silmez, yalniz onaylar."""
         self.acknowledgeAlarms()
 
     def _active_alarms(self):

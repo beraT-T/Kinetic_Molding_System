@@ -75,7 +75,7 @@ class SimBridge:
     # ================= transport arayuzu =================
     @staticmethod
     def list_ports():
-        return [{"device": "SIM", "description": "Simulasyon koprusu"}]
+        return [{"device": "SIM", "description": "Simülasyon köprüsü"}]
 
     @property
     def is_open(self):

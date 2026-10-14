@@ -87,11 +87,24 @@ Item {
                                 font.bold: true; font.pixelSize: Theme.fsSmall
                             }
                         }
-                        Text {
+                        Column {
                             Layout.fillWidth: true
-                            text: modelData.text
-                            wrapMode: Text.WordWrap
-                            color: Theme.text; font.pixelSize: Theme.fsBody
+                            spacing: 4
+                            Text {
+                                width: parent.width
+                                text: modelData.text
+                                wrapMode: Text.WordWrap
+                                color: Theme.text; font.pixelSize: Theme.fsBody
+                            }
+                            // neden / etki / adim (yalniz aktif kayitta)
+                            Text {
+                                width: parent.width
+                                visible: modelData.active && modelData.help.length > 0
+                                text: modelData.help
+                                wrapMode: Text.WordWrap
+                                color: Theme.textDim; font.pixelSize: Theme.fsSmall
+                                lineHeight: 1.15
+                            }
                         }
                         Column {
                             Layout.preferredWidth: 260

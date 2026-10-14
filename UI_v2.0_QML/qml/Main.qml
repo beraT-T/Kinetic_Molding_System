@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1366
     height: 820
-    title: "Adaptif Kalıp Kontrol - UI v2.2"
+    title: "Adaptif Kalıp Kontrol - UI v2.2" + (app.demoMode ? " — SİMÜLASYON" : "")
     color: Theme.bg
 
     Component.onCompleted: if (startFullscreen) win.showFullScreen()
@@ -30,6 +30,25 @@ ApplicationWindow {
         spacing: 0
 
         Header { Layout.fillWidth: true }
+
+        // --demo: KALICI SIMULASYON bandi (sahte basari gercek islemle karismasin).
+        // Renk hicbir durum/alarm anlamina kullanilmayan sonuk mor; metin acikca soyler.
+        Rectangle {
+            Layout.fillWidth: true
+            visible: app.demoMode
+            height: 44
+            color: "#3b2f63"
+            border.color: "#8a7bc8"
+            border.width: 2
+            Text {
+                anchors.centerIn: parent
+                text: "SİMÜLASYON (--demo) — donanım bağlı değil; durumlar ve hareketler sahte köprüden"
+                color: "#ffffff"
+                font.bold: true
+                font.pixelSize: Theme.fsBody
+                font.letterSpacing: 1
+            }
+        }
 
         // kalici durum/alarm seridi - her sekmede gorunur (ISA-101)
         StatusStrip { Layout.fillWidth: true; onOpenAlarms: alarmPanel.open() }

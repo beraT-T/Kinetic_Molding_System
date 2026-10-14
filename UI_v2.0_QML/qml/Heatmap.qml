@@ -1,8 +1,12 @@
 import QtQuick
 import "Theme.js" as Theme
 
+// MODEL HEDEFLERI haritasi (olculen konum DEGIL). Hucreler ~50 px (< 80 px dokunma hedefi):
+// tek motor secimi yerine dokunulan hucrenin MODULU (3x3, ~150 px) secilir ve ayrinti
+// penceresi acilir (moduleTapped). Hedef modul cercevesi haritada gosterilir.
 Item {
     id: root
+    signal moduleTapped(int sid)
     property int gridN: 12
     property int selR: -1        // secili hucre (dokunulan) - kalici
     property int selC: -1
@@ -74,6 +78,18 @@ Item {
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
 
+    // ---- hedef modul cercevesi (alt cubuktaki "Hedef modül") ----
+    Rectangle {
+        readonly property int sid0: app.currentSlaveId - 1
+        x: (sid0 % 4) * 3 * root.cw
+        y: Math.floor(sid0 / 4) * 3 * root.ch
+        width: 3 * root.cw
+        height: 3 * root.ch
+        color: "transparent"
+        border.color: Theme.selection
+        border.width: 4
+    }
+
     // ---- secili hucre isareti (overlay - canvas repaint yok) ----
     Rectangle {
         visible: root.selR >= 0 && root.selC >= 0
@@ -97,6 +113,7 @@ Item {
             if (app.gridData.length <= r * n + c) return
             root.selR = r
             root.selC = c
+            root.moduleTapped(Math.floor(r / 3) * 4 + Math.floor(c / 3) + 1)
         }
     }
 
@@ -138,7 +155,8 @@ Item {
                 var slaveRow = Math.floor(root.selR / 3), slaveCol = Math.floor(root.selC / 3)
                 var sid = slaveRow * 4 + slaveCol + 1
                 var mm = app.gridData.length > idx ? app.gridData[idx] + " mm" : "—"
-                return "Satir " + root.selR + " · Sutun " + root.selC + "  ·  Modul " + sid + "\n" + mm
+                return "Satır " + root.selR + " · Sütun " + root.selC + "  ·  Modül " + sid +
+                       " / Motor " + ((root.selR % 3) * 3 + (root.selC % 3) + 1) + "\nHedef " + mm
             }
         }
     }

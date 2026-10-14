@@ -21,6 +21,7 @@ Item {
 
     NumPad {
         id: pad
+        objectName: "numPad"
         property int motor: 0
         blockReason: app.testerMoveBlockReason
         onAccepted: function(v) { app.moveMotor(page.sid, pad.motor, v) }
@@ -324,7 +325,7 @@ Item {
 
             Terminal {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 236
+                Layout.preferredHeight: 216
                 dense: true
                 logModel: page.logModel
             }
