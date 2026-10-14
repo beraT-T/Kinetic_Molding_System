@@ -71,6 +71,27 @@ class ReferenceValidityTest(unittest.TestCase):
         self.assertFalse(r.c.allHomed)
 
 
+class ResetDetectionTest(unittest.TestCase):
+    def test_single_motor_home_on_fresh_module_is_not_reset(self):
+        r = Rig(modules=(1,))
+        r.setup()                        # taze modul: 9 x I0
+        n0 = len(r.results)
+        r.c.homeMotor(1, 3)
+        r.run_until(lambda: len(r.results) > n0, max_s=60)
+        self.assertTrue(r.results[-1][0], r.results[-1])
+        r.run_s(5)
+        self.assertNotIn("SYNC:1", [a["key"] for a in r.alarms()])
+
+    def test_partial_reset_detected(self):
+        r = Rig(modules=(1,))
+        r.setup()
+        r.c.homeMotor(1, 3)
+        r.run_s(10)
+        r.br.reset_module(1)             # motor 3 de I'ya dondu
+        r.run_s(4)
+        self.assertIn("SYNC:1", [a["key"] for a in r.alarms()])
+
+
 class DataAgeTest(unittest.TestCase):
     def test_status_unknown_when_data_old(self):
         r = Rig(modules=(1,))
@@ -254,6 +275,39 @@ class AlarmLatencyTest(unittest.TestCase):
         self.assertLessEqual(dt, worst_alarm_latency_s(16))
         print(f"\n  [olcum] 16 modul, ariza gorunme suresi {dt:.1f} sn "
               f"(tipik hesap {typical_alarm_latency_s(16):.1f}, en kotu {worst_alarm_latency_s(16):.1f})")
+
+
+class RealThreadPathTest(unittest.TestCase):
+    """Controller + GERCEK SerialManager (loop://) + gercek QTimer: thread'ler arasi
+    tasima (yazma sonucu, okunan satir, kopma) ana thread'de islenir."""
+
+    def test_controller_over_loopback(self):
+        from controller import Controller
+        from serial_manager import SerialManager
+        from timers import QtTimerService
+        from support import APP
+        c = Controller(transport=SerialManager(), timers=QtTimerService(),
+                       config={"expected_modules": None, "firmware_variant": None,
+                               "errors": [], "path": "(test)"})
+        logs = []
+        c.logMessage.connect(logs.append)
+        c.connectPort("loop://", 9600)
+        self.assertTrue(c.connected)
+        self.assertEqual(c.sendRaw("STAT:01"), "")
+
+        def wait(cond, s=3.0):
+            end = time.time() + s
+            while time.time() < end and not cond():
+                APP.processEvents()
+                time.sleep(0.01)
+            return cond()
+        # loop:// komutu geri yansitir: STAT:01 gelir ama govdesi yok -> gecersiz cevap
+        self.assertTrue(wait(lambda: any("← STAT:01" in l for l in logs)), logs[-5:])
+        self.assertTrue(wait(lambda: any(a["key"] == "DATA:1" for a in c.alarms)))
+        # portu arkadan kapat: kopma ana thread'de islenir
+        c._transport._s.ser.close()
+        self.assertTrue(wait(lambda: not c.connected), "kopma islenmedi")
+        self.assertIn("LINK", [a["key"] for a in c.alarms])
 
 
 class SerialManagerLoopTest(unittest.TestCase):

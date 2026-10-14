@@ -124,11 +124,51 @@ home bitmeden hareket komutu göndermek sıfır referansını bozar.
 
 - **`Web_UI/`** (legacy): Flask backend + React/Vite frontend + Socket.IO. Chromium kiosk'ta Pi'de kasıyor.
 - **`UI_v2.0_QML/`** (GÜNCEL, Pi optimize): PySide6 + QML, tek süreç (Flask/tarayıcı yok), GPU
-  hızlandırmalı. `main.py` → `backend/controller.py` (QML köprüsü) + `serial_manager.py` +
-  `stl_interpolator.py`; `qml/` arayüz. Protokol v5.1. Çalıştırma: `python3 main.py [--fullscreen]`.
-  Ayrıntı: `UI_v2.0_QML/README.md`. (Genelde `ui_v2.0` git branch'inde tutulur.)
+  hızlandırmalı. `main.py` → `backend/controller.py` (QML köprüsü) + `link.py` (tek seri
+  yönetici) + `protocol.py` + `serial_manager.py` + `hmi_config.py` + `stl_interpolator.py`;
+  `qml/` arayüz. Protokol v5.1. Çalıştırma: `python3 main.py [--fullscreen] [--demo]`.
+  Ayrıntı: `UI_v2.0_QML/README.md`. Branch: `ui_v2.0` (kiosk), `ui_v2.2` (v2.2 turu, henüz
+  deploy edilmedi).
 - STL interpolasyonu: trimesh + scipy `LinearNDInterpolator`, merkez 300mm'ye offset,
-  **10–590 mm clip** (güvenlik marjı — aşağıya bak).
+  **10–590 mm clip** (güvenlik marjı — aşağıya bak). v2.2: doldurulan/kırpılan hücre sayısı ve
+  en büyük komşu farkı operatöre gösterilir (algoritma aynı).
+
+### UI v2.2 çekirdek kuralları (bozma)
+
+Ana fikir: **arayüz bilmediği bir şeyi bildiğini iddia etmez.** Gerekçeler/kararlar:
+`UI_v2.0_QML/docs/v2.2/` (INCELEME, KARARLAR K1–K29, GUVENLIK_ACIK_KONULAR, PROTOKOL_ONERI_v5.2).
+
+- **Tek hareket yetkisi:** `controller._authorize_motion()` / `_block_reason()`. Üretim,
+  "Referans al", "Seçili modüle uygula", Bakım butonları, doğrudan slotlar (`moveMotor`,
+  `allToValue`, `homeSlave`, `homeMotor`) ve **terminal** hep buradan geçer. Reddedilirse sebep
+  operatöre gösterilir; butonlar `app.*BlockReason` ile kapanır. Yeni hareket yolu eklerken
+  buradan geçir. Terminal: `PING/STAT/GETPOS/GETID` serbest, `ARR/ALL/MOV/HOME` yetkili,
+  `SETID` kilitli, tanınmayan fiil red. Bakım hedefleri 10–590 mm.
+- **Kilit:** işlem sürüyor, hareket komutu yolda, bilinen herhangi bir modülde M/H veya komut
+  sonrası durgunluk doğrulanmadı, veri eski/eksik (U2ERR), senkron dışı, aktif alarm (F/U2/COMM/
+  SYNC/LINK/DATA), referanssız (MOV/ALL/ARR) → hareket yok.
+- **Kabul ≠ tamamlanma:** yazma başarılı + bu işleme ait ACK + **ACK'ten sonra istenmiş** taze
+  STAT + 9 geçerli token (`^[IMHSF]\d+$`) + tolerans (±2 mm; HOME ≈0). `*ERR`/ACK zaman aşımı/yazma
+  hatası → işlem biter, kalan modüllere gönderilmez, modül "senkron dışı", **kör tekrar yok**.
+- **İşlem / bağlantı nesli:** her callback op id + faz + link nesli kontrol eder (eski komut sızmaz).
+- **Tek seri yönetici** (`link.py`): hatta tek bekleyen istek; STAT 2,5 sn, ACK 2,5 sn, PING 0,3 sn
+  zaman aşımı; zaman aşımında hat koruması; kuyruk ≤64. Yazma UI thread'inde değil.
+- **Gözetim her zaman sürer:** bağlıyken tick (1 sn) başına tek modül STAT, bilinen bütün modüller
+  round-robin. İş sonucu (arıza/zaman aşımı) gözetimi bitirmez.
+- **Alarm yaşam döngüsü:** aktif → "Uyarıyı gördüm" (onay, SİLMEZ) → yalnız taze geçerli STAT
+  normale dönüşü gösterince "giderildi" → onaylıysa listeden kalkar. İletişim belirsizliğinde
+  çözülmez; yeni işlem alarmı temizlemez. Reset (beklenmeyen `I`), kopma, F, HOME zaman aşımı →
+  referans düşer.
+- **Veri yaşı:** `data_stale_s(N) = max(10, 2×N×2,8 sn)`; aşılınca şerit "Güncel makine durumu
+  bilinmiyor." En kötü alarm gecikmesi: aşağıda (STAT poll bölümü).
+- **`config/machine.json`:** `expected_modules`, `firmware_variant` (`null` = yapılandırılmadı →
+  muhafazakâr: BAŞLA onayında modüller listelenir; U2ERR'de motor no belirlenmez).
+- **Metin:** "Bu arayüzden hareket durdurulamıyor." (talimat/anahtar adı uydurma);
+  "Referans alma tamamlandı (firmware bildirimi)"; "hedefe ulaştı" ≠ güvenli erişim.
+  "doğrulandı / güvenli / durdu" kanıtsız kullanılmaz (`tests/test_texts.py` denetler).
+- **Testler (donanımsız):** `cd UI_v2.0_QML && QT_QPA_PLATFORM=offscreen venv/bin/python3 -m
+  unittest discover -s tests -v` (sahte köprü `sim_bridge.py` + sahte saat; QML yükleme testi
+  dahil). Commit öncesi yeşil olmalı.
 
 ### HMI stil rehberi (ISA-101 / IEC 60073 / ISO 9241-303)
 
@@ -151,12 +191,15 @@ yazmasını ister — o dosya bu rehberdir). Özet:
 - **Uzun işlem:** ekranı kapatan opak modal YOK; ilerleme şeridi aksiyon çubuğunun
   üstüne biner, harita/durum canlı kalır. İlerleme **motor bazlı** (modül bazlı olursa
   1-2 modülde çubuk 150 sn kıpırdamaz), geçen + tahmini kalan süre gösterilir.
-- **Durum şeridi** (`StatusStrip.qml`) her sekmede sabit: arıza/bağlantı/referans.
+- **Durum şeridi** (`StatusStrip.qml`) her sekmede sabit: arıza/bağlantı/referans/veri yaşı;
+  metin ve öncelik backend'de (`statusInfo`). "Uyarıyı gördüm" ≥80 px; alarm listesi `AlarmPanel`.
+- **Hareket bandı** (`BusyOverlay`): nötr zemin + amber çerçeve, "Bu arayüzden hareket
+  durdurulamıyor."; alarm kırmızısı yalnız gerçek arıza.
 - `font.families` bu Qt sürümünde **yok**, yalnız `font.family` (bkz. `Theme.fontMono`).
 
 ### Grid ↔ motor eşlemesi (kablolama için)
 
-`controller._slave_values()` satır-öncelikli dizer, `ARR:id:p1..p9` sırası budur:
+`controller.slave_values()` satır-öncelikli dizer, `ARR:id:p1..p9` sırası budur:
 
 ```
 Modülün 3x3 alanı           12x12 içinde modüller (4x4)
@@ -167,8 +210,8 @@ Modülün 3x3 alanı           12x12 içinde modüller (4x4)
 ```
 Yani blok içi (satır 0, sütun 0) = **Motor 1**; Modül 1 = satır 0-2 / sütun 0-2.
 Kasadaki soket sırası = motor numarası (soket 1 = M1 … soket 9 = M9, v5f411).
-Bu **mantıksal** eşleme; modülün fiziksel yönü ters monte edilmişse Tester'dan tek motor
-sürerek bir kez doğrula.
+Bu **mantıksal** eşleme; modülün fiziksel yönü ters monte edilmişse Bakım ekranından tek
+motor sürerek bir kez doğrula. (v2.2'de fonksiyon: `controller.slave_values(grid, sid)`.)
 
 ### Güvenlik marjı: tam stroka komut verme (sahte FAULT sebebi)
 

@@ -123,7 +123,11 @@ class ModState:
         self.complete = False       # son STAT 9 gecerli token mi
         self.u2err = False
         self.homed = False          # referans alma tamamlandi (firmware bildirimi)
-        self.seen_non_I = False     # reset tespiti
+        # reset tespiti MOTOR bazli: bir motor bu baglantida I disi (M/H/S/F) goruldukten
+        # sonra yeniden I bildirirse modul yeniden baslamistir (firmware I'ya yalniz acilista
+        # doner). Modul bazli olursa tek motor referansindan sonra digerlerinin I kalmasi
+        # yanlis "reset" uretir.
+        self.seen = [False] * MOTORS_PER_MODULE
         self.watch_t = None         # son hareket komutunun yazilmaya basladigi an
         self.motion_pending = False  # hareket komutu kuyrukta/hatta
         self.sync_need = False      # K11: senkron disi
@@ -670,9 +674,10 @@ class Controller(QObject):
         m.u2err = info["u2err"]
         letters = m.letters()
 
-        # --- reset tespiti: firmware I'ya yalniz yeniden baslayinca doner ---
-        if "I" in letters and (m.seen_non_I or m.homed):
-            m.seen_non_I = False
+        # --- reset tespiti: firmware I'ya yalniz yeniden baslayinca doner (motor bazli) ---
+        reset = any(l == "I" and (m.seen[i] or m.homed) for i, l in enumerate(letters))
+        if reset:
+            m.seen = [False] * MOTORS_PER_MODULE
             m.homed = False
             m.targets = [None] * MOTORS_PER_MODULE
             self._raise(f"SYNC:{sid}", "SYNC", 1, sid, None,
@@ -686,8 +691,9 @@ class Controller(QObject):
                              "Etki: Referans ve konum bilgisi geçersiz; işlem sonlandırıldı. "
                              "Diğer modüller izlenmeye devam ediyor.\n"
                              "Adım: Durum doğrulandıktan sonra referans alın.")
-        if any(l in ("M", "H", "S", "F") for l in letters if l):
-            m.seen_non_I = True
+        for i, l in enumerate(letters):
+            if l in ("M", "H", "S", "F"):
+                m.seen[i] = True
 
         # --- ariza (F) ---
         for i, mt in enumerate(m.motors):

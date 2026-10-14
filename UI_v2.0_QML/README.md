@@ -1,94 +1,80 @@
-# UI v2.0 — PySide6 + QML (Raspberry Pi optimize)
+# UI v2.2 — PySide6 + QML (Raspberry Pi optimize)
 
-Web arayüzünün (Flask + React) native, GPU hızlandırmalı karşılığı. Tek Python süreci:
-QML arayüz + seri port + STL interpolasyonu hepsi içeride. **Flask yok, tarayıcı yok** →
-Pi 5'te Chromium kiosk'un aksine akıcı (Qt Quick scene-graph'ı GPU ile çizer).
+Tek Python süreci: QML arayüz + seri port + STL interpolasyonu. Flask/tarayıcı yok →
+Pi 5'te akıcı (Qt Quick scene-graph'ı GPU ile çizer). Protokol **v5.1** (firmware v5 / v5f411).
 
-## Özellikler (web arayüzüyle parite)
+> **v2.2 ana fikir:** arayüz bilmediği bir şeyi bildiğini iddia etmez. Ayrıntı ve gerekçeler:
+> `docs/v2.2/` (GOREV, INCELEME, KARARLAR, ILERLEME, PROTOKOL_ONERI_v5.2, GUVENLIK_ACIK_KONULAR).
+> **Bu arayüzden hareket durdurulamaz** (protokolde STOP yok; fiziksel durdurma değerlendirilmedi).
 
-- Bağlan / port seç / demo mod / ağ tara (PING 1–16, aktif slave takibi)
-- STL yükle → 12×12 grid interpolasyon (mevcut `stl_interpolator.py` mantığı)
-- 3D önizleme (144 pin yükseklik alanı, orbit/zoom)
-- 12×12 ısı haritası + hover bilgisi + istatistik (min/max/ort/std)
-- Gönder: bu slave'e (ARR), tüm aktiflere; HOME (slave/motor); STAT ile canlı durum
-- Tester sekmesi: 16-slave panosu + 3×3 motor slider grid + Home/Test + seri terminal
-- Terminalden ham protokol komutu
+## Özellikler
 
-Protokol **v5.1**'e hizalı (ARR ile dizi gönderimi, STAT ile durum, HOME hepsi). Eski tekli
-`MOV`/`HOME:id:motor` Tester sekmesinde mevcut.
+- Bağlan / port seç / modül tara (PING 01–16)
+- STL yükle → 12×12 grid (algoritma v2.0 ile aynı; doldurulan/kırpılan hücre ve en büyük komşu
+  farkı gösterilir) — yükleme **atomik**: dosya adı ve hedefler yalnız başarılı hesaplamada birlikte
+- Model hedef haritası + 3D önizleme (**model hedefleri — ölçülen konum değildir**), haritaya
+  dokununca modül ayrıntısı (hedef + son ölçüm)
+- Üretim (BAŞLA: gerekirse önce referans, sonra şekil), Referans al, Seçili modüle uygula
+- Bakım / Motor testi: Ölçülen ≠ Hedef, veri yaşı, uygulama içi sayısal tuş takımı, onaylı hareket
+- Kalıcı alarm listesi ("Uyarıyı gördüm" kaydı silmez), durum şeridinde veri yaşı
+- Haberleşme günlüğü + terminal (aynı hareket yetkisinden geçer; SETID kilitli)
 
-## Klasör yapısı
+## Mimari (backend/)
 
-```
-UI_v2.0_QML/
-├── main.py                  # giriş noktası
-├── requirements.txt
-├── backend/
-│   ├── serial_manager.py    # pyserial + arka plan okuma thread'i
-│   ├── controller.py        # QML köprüsü (slot/signal/property, protokol)
-│   └── stl_interpolator.py  # STL -> 12x12 grid (yeniden kullanım)
-└── qml/
-    ├── Main.qml  Header.qml  MainPage.qml  TesterPage.qml
-    ├── Heatmap.qml  Surface3D.qml  Terminal.qml  ActionButton.qml
-    └── Theme.js
-```
+| Dosya | Görev |
+|---|---|
+| `controller.py` | QML köprüsü. **Tek hareket yetkisi** (`_authorize_motion`), işlem (op) ve bağlantı nesli, katı tamamlanma, sürekli gözetim, alarm modeli, model durumu |
+| `link.py` | **Tek seri işlem yöneticisi**: hatta tek bekleyen istek, istek başına zaman aşımı, sınırlı kuyruk, hareket komutlarında kör tekrar yok |
+| `protocol.py` | Saf fonksiyonlar: katı STAT şeması (`^[IMHSF]\d+$`, 9 token, `U2ERR`), ACK eşleme, terminal fiilleri, hedef doğrulama (10–590 mm) |
+| `serial_manager.py` | pyserial; yazma ayrı thread'de (`write_timeout`), okuma tamponu sınırlı, kopma bildirilir |
+| `hmi_config.py` | Bütün sabitler (tolerans, zaman aşımları, veri yaşı, alarm gecikmesi) + `config/machine.json` yükleyici |
+| `sim_bridge.py` | Donanımsız U3 simülatörü (`--demo` ve testler; hata enjeksiyonu) |
+| `timers.py` | Enjekte edilebilir saat (gerçek: QTimer; test: elle ilerletilen sahte saat) |
+| `stl_interpolator.py` | STL → 12×12 (trimesh + scipy), 10–590 mm güvenlik marjı |
 
-## Kurulum (Raspberry Pi 5, 64-bit)
-
-```bash
-sudo apt update
-sudo apt install -y python3-pip libgl1-mesa-dri
-cd UI_v2.0_QML
-pip install -r requirements.txt        # gerekiyorsa: pip install --break-system-packages -r requirements.txt
-```
-
-> PySide6 ARM64 (aarch64) tekerlekleri pip'te mevcut. trimesh/scipy ilk kurulumda biraz
-> uzun sürebilir. Qt Quick 3D için GPU sürücüsü (Pi 5 varsayılan KMS/V3D) yeterli.
+`config/machine.json`: `expected_modules` (takılı modüller) ve `firmware_variant` (`"v5.1"` /
+`"v5f411"`). `null` = yapılandırılmadı → arayüz varsayım yapmaz (BAŞLA onayında bulunan modüller
+tek tek listelenir; `U2ERR`'de motor numarası belirlenmez). Bkz. `docs/v2.2/KARARLAR.md` K3/K4.
 
 ## Çalıştırma
 
 ```bash
 python3 main.py                 # pencere
 python3 main.py --fullscreen    # tam ekran (kiosk)
+python3 main.py --demo          # donanımsız SİMÜLASYON
 ```
 
-Masaüstü olmadan, doğrudan ekrana (en hafif) çalıştırmak için EGLFS:
+Pi'de kiosk `cage` (Wayland) altında çalışır; `QT_QPA_PLATFORM` elle **ayarlanmaz**, eglfs pip
+wheel'inde yok. Kurulum/dağıtım: kök `CLAUDE.md` → "Raspberry Pi dağıtımı".
+
+## Testler (donanım gerekmez)
 
 ```bash
-QT_QPA_PLATFORM=eglfs python3 main.py --fullscreen
+cd UI_v2.0_QML
+QT_QPA_PLATFORM=offscreen venv/bin/python3 -m unittest discover -s tests -v
 ```
 
-Wayland masaüstünde:
+- `test_acceptance.py` — INCELEME kabul matrisinin otomatikleştirilebilen satırları
+- `test_motion_authority.py`, `test_supervision.py`, `test_model.py` — faz testleri
+- `test_protocol.py`, `test_link.py` — birim testleri (bilinen sınır: geç cevap eşleşmesi)
+- `test_texts.py` — operatör metinleri (eski metin yok, doğrulanmamış iddia yok, Türkçe karakter)
+- `test_qml_load.py` — `Main.qml` ayrı süreçte offscreen yüklenir; beklenmeyen QML/Qt uyarısı
+  testi kırar ("Qt Quick 3D is not functional" offscreen'de beklenir ve filtrelenir)
+
+Ekran görüntüleri (offscreen 1920×1080, demo; 3D alan boş çıkar):
 
 ```bash
-QT_QPA_PLATFORM=wayland python3 main.py --fullscreen
+QT_QPA_PLATFORM=offscreen venv/bin/python3 tests/qml_load_check.py --shots docs/v2.2/ekran
 ```
 
-Kontrol stili performans için `Basic`'e ayarlı (kod içinde). Kiosk için otomatik başlatma
-istersen systemd servisi ya da `~/.config/wayfire.ini`/autostart ile `python3 main.py --fullscreen`
-çağırman yeterli.
+Testler sahte köprü + sahte saatle çalışır: gerçek RS485 zamanlaması, USB kopması, motor hareketi,
+panel okunabilirliği ve dokunma isabeti **burada doğrulanmaz** (PANELDE / DONANIMDA TEST).
 
-## Yeni branch'te tutmak (ui_v2.0)
+## `--demo` sınırları
 
-Bu klasör main'e karışmasın istiyorsan ayrı branch'te tut:
-
-```bash
-# proje kökünde
-git checkout -b ui_v2.0
-git add UI_v2.0_QML
-git commit -m "UI v2.0: PySide6 + QML native arayuz (Pi optimize)"
-git push -u origin ui_v2.0
-```
-
-main'e geri dönmek: `git checkout main`. Branch'ler arası geçişte bu klasör görünüp kaybolur,
-bu normal.
-
-## Notlar / sonraki adımlar
-
-- 3D önizleme şu an **interpolasyon sonucu mold yüzeyini** 144 pin olarak gösterir (web'deki
-  ham STL mesh'i yerine; bu makinenin yapacağı şekli daha net gösterir). Ham STL mesh
-  render'ı istenirse eklenebilir.
-- Demo mod donanımsız UI testine izin verir (sahte bağlan/tara/STAT).
-- Gerçek donanımda STAT poll'u "Canlı durum" anahtarıyla açılır (Tester sekmesi).
-- İlk çalıştırmada bir hata/uyumsuzluk olursa (QML modülü, Quick3D vb.) çıktıyı ilet,
-  birlikte ayıklayalım.
+- Demo, gerçek protokol yolunu (seri kuyruk, ACK, STAT, alarm, yetki) **simülasyon köprüsü** ile
+  çalıştırır: 4 modül, ~60 mm/sn (gerçek ~4 mm/sn), firmware'e benzer durum harfleri.
+- Ekranda kalıcı **SİMÜLASYON** bandı vardır; sonuçlar gerçek makine hakkında hiçbir şey söylemez.
+- Simülatör firmware'in birebir kopyası değildir: RS485 elektriksel zamanlaması, U2 haberleşmesi,
+  encoder gürültüsü, stall/HOME algılaması, güç davranışı yaklaşık modellenir veya hiç modellenmez.
+- Demo, kabul testi matrisinin yerine geçmez; hata senaryoları `tests/` altındadır.
