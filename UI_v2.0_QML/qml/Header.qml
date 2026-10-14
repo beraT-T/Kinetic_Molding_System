@@ -20,13 +20,13 @@ Rectangle {
         Column {
             spacing: 0
             Text {
-                text: "ADAPTIF KALIP"
+                text: "ADAPTİF KALIP"
                 color: Theme.text; font.bold: true
                 font.pixelSize: Theme.fsTitle
                 font.letterSpacing: 1.5
             }
             Text {
-                text: "Kontrol Sistemi v2.0"
+                text: "Kontrol Sistemi v2.2"
                 color: Theme.textDim; font.pixelSize: Theme.fsSmall
             }
         }
@@ -39,31 +39,35 @@ Rectangle {
             Layout.preferredWidth: 260
             Layout.preferredHeight: Theme.inputHeight
             visible: !app.demoMode
-            enabled: !app.busy
+            enabled: !app.connected
             model: app.ports
             font.pixelSize: Theme.fsButton
-            displayText: currentIndex >= 0 ? currentText : "Port sec"
+            displayText: currentIndex >= 0 ? currentText : "Port seç"
         }
         TouchButton {
-            text: "Yenile"
+            text: "Portları yenile"
             color: Theme.actionNeutral
             visible: !app.demoMode
-            enabled: !app.busy
+            enabled: !app.connected
+            disabledReason: "önce bağlantıyı kesin"
             onClicked: app.refreshPorts()
         }
         TouchButton {
-            text: app.connected ? "Baglantiyi Kes" : "Baglan"
+            text: app.connected ? "Bağlantıyı kes" : "Bağlan"
             color: app.connected ? Theme.actionNeutral : Theme.actionPrimary
-            enabled: !app.busy
+            enabled: app.connected ? app.linkBlockReason === ""
+                                   : (app.demoMode || portCombo.currentIndex >= 0)
+            disabledReason: app.connected ? app.linkBlockReason : "port seçin"
             onClicked: {
                 if (app.connected) app.disconnectPort()
-                else app.connectPort(app.demoMode ? "DEMO" : portCombo.currentText)
+                else app.connectPort(app.demoMode ? "SIM" : portCombo.currentText)
             }
         }
         TouchButton {
-            text: "Modulleri Bul"
+            text: "Modülleri bul"
             color: Theme.actionPrimary
-            enabled: app.connected && !app.busy
+            enabled: app.scanBlockReason === ""
+            disabledReason: app.scanBlockReason
             onClicked: app.scan()
         }
     }

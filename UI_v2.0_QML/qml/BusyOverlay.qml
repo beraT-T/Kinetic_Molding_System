@@ -52,6 +52,7 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 Text {
+                    visible: app.busy
                     text: root.done + " / " + root.total + " motor"
                     color: Theme.text; font.bold: true
                     font.pixelSize: Theme.fsValue
@@ -59,8 +60,19 @@ Item {
                 }
             }
 
+            // islem bittiyse (ariza/zaman asimi) ilerleme yerine gozetim sebebi
+            Text {
+                visible: !app.busy
+                Layout.fillWidth: true
+                text: app.motionText.length ? app.motionText
+                                            : "Hareket sürüyor veya durgunluk doğrulanmadı"
+                color: Theme.textDim; font.pixelSize: Theme.fsBody
+                elide: Text.ElideRight
+            }
+
             // ilerleme cubugu (notr - yesil "normal" anlamina saklanir)
             Rectangle {
+                visible: app.busy
                 Layout.fillWidth: true
                 height: 18
                 radius: Theme.radiusSm
@@ -77,9 +89,10 @@ Item {
 
             // sureler (NN/g: 1 dk ustu islemde gecen + tahmini kalan)
             RowLayout {
+                visible: app.busy
                 Layout.fillWidth: true
                 Text {
-                    text: "Gecen " + Theme.clock(root.elapsed)
+                    text: "Geçen " + Theme.clock(root.elapsed)
                     color: Theme.textDim; font.pixelSize: Theme.fsBody
                     font.family: Theme.fontMono
                 }

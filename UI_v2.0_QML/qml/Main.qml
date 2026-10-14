@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1366
     height: 820
-    title: "Adaptif Kalip Kontrol - UI v2.0"
+    title: "Adaptif Kalıp Kontrol - UI v2.2"
     color: Theme.bg
 
     Component.onCompleted: if (startFullscreen) win.showFullScreen()
@@ -32,12 +32,12 @@ ApplicationWindow {
         Header { Layout.fillWidth: true }
 
         // kalici durum/alarm seridi - her sekmede gorunur (ISA-101)
-        StatusStrip { Layout.fillWidth: true }
+        StatusStrip { Layout.fillWidth: true; onOpenAlarms: alarmPanel.open() }
 
         // ---- sekme cubugu ----
         Rectangle {
             Layout.fillWidth: true
-            height: Theme.touchMin + 16
+            height: Theme.touchMin + 8
             color: Theme.bg2
             RowLayout {
                 anchors.left: parent.left
@@ -45,7 +45,7 @@ ApplicationWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.gapMin
                 Repeater {
-                    model: ["STL Kontrol", "Tester"]
+                    model: ["STL Kontrol", "Bakım / Motor testi"]
                     delegate: Button {
                         text: modelData
                         checkable: true
@@ -74,6 +74,7 @@ ApplicationWindow {
 
         StackLayout {
             id: tabStack
+            objectName: "tabStack"
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: 0
@@ -96,6 +97,9 @@ ApplicationWindow {
         height: 230
     }
 
+    // ---- alarm / uyari listesi ----
+    AlarmPanel { id: alarmPanel; objectName: "alarmPanel" }
+
     // ---- bilgi/hata penceresi (islem sonucu) ----
     AppDialog { id: infoDialog }
 
@@ -104,8 +108,11 @@ ApplicationWindow {
     Connections {
         target: app
         function onOperationFinished(ok, title, message) {
-            infoDialog.show(title, message, "Tamam", "",
-                            ok ? Theme.actionStart : Theme.alarm)
+            // "Kapat": pencere yalniz kapanir (islemi etkilemez). Basari rengi NOTR
+            // (yesil yalniz BASLA aktuatorunde); ariza kirmizi; diger red/uyari amber.
+            infoDialog.show(title, message, "Kapat", "",
+                            ok ? Theme.actionPrimary
+                               : (title === "ARIZA" ? Theme.alarm : Theme.warn))
         }
     }
 }

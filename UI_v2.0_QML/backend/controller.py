@@ -1488,12 +1488,9 @@ class Controller(QObject):
         d["testerMoveBlockReason"] = self._block_reason("maint_move", cur)
         d["testerHomeBlockReason"] = self._block_reason("maint_home", cur)
         d["scanBlockReason"] = self._scan_block()
-        if self._op is not None:
-            d["linkBlockReason"] = "İşlem sürüyor."
-        elif mtext:
-            d["linkBlockReason"] = "Hareket sürüyor veya durgunluk doğrulanmadı."
-        else:
-            d["linkBlockReason"] = ""
+        # Baglantiyi kesmek yalniz islem surerken kapali: hareket olasiyken kesmek
+        # gozetimi kaybettirir ama cevapsiz modul yuzunden port degisimi kilitlenmesin.
+        d["linkBlockReason"] = "İşlem sürüyor." if self._op is not None else ""
         d["modelBlockReason"] = self._model_block()
         exp = self._cfg.get("expected_modules")
         d["plan"] = {

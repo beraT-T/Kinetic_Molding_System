@@ -83,7 +83,7 @@ var stepperSize = 80;
 var gapMin      = 16;   // ~2.9 mm - ANSI-HFES 3.2 mm'ye yakin
 var radius      = 6;    // endustriyel: keskin, dekoratif yuvarlaklik yok
 var radiusSm    = 4;
-var stripHeight = 52;   // alarm/durum seridi
+var stripHeight = 88;   // alarm/durum seridi (icindeki onay butonu >= 80 px)
 
 // =====================================================================
 // ISI HARITASI RAMPASI - cividis (algisal duzgun, renk koru uyumlu,
@@ -120,14 +120,16 @@ function stateColor(letter) {
     }
 }
 
-// durum harfi -> operator dili
+// durum harfi -> operator dili. "" / taninmayan = BILINMIYOR (bosta DEGIL).
+// S = firmware SETTLED: hedefe ulasti (genel "hazir" degil, guvenli erisim degil).
 function stateLabel(letter) {
     switch (letter) {
-        case "S": return "Hazir";
+        case "S": return "Hedefe ulaştı";
         case "M": return "Hareket";
-        case "H": return "Referans";
+        case "H": return "Referans alıyor";
         case "F": return "ARIZA";
-        default:  return "Bosta";
+        case "I": return "Boşta";
+        default:  return "Durum bilinmiyor";
     }
 }
 

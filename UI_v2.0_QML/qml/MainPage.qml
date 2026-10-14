@@ -125,9 +125,10 @@ Item {
                         }
                     }
                     TouchButton {
-                        text: "STL Sec"
+                        text: "STL Seç"
                         color: Theme.actionPrimary
-                        enabled: !app.busy
+                        enabled: app.modelBlockReason === ""
+                        disabledReason: app.modelBlockReason
                         onClicked: fileDialog.open()
                     }
                 }
@@ -284,17 +285,16 @@ Item {
                     ActionButton {
                         text: "Secili Module Uygula"; subText: "test"
                         color: Theme.actionNeutral
-                        enabled: app.connected && app.gridData.length > 0 && !app.busy
-                        disabledReason: !app.connected ? "baglanti yok"
-                                      : app.gridData.length === 0 ? "STL yuklu degil" : "islem suruyor"
+                        enabled: app.sendSelectedBlockReason === ""
+                        disabledReason: app.sendSelectedBlockReason
                         onClicked: confirmDialog.ask("send")
                     }
                     // Sadece referans alma
                     ActionButton {
                         text: "Home"; subText: "tum moduller"
                         color: Theme.actionWarn
-                        enabled: app.connected && !app.busy
-                        disabledReason: !app.connected ? "baglanti yok" : "islem suruyor"
+                        enabled: app.homeAllBlockReason === ""
+                        disabledReason: app.homeAllBlockReason
                         onClicked: confirmDialog.ask("home")
                     }
                     // Ana uretim akisi. IEC 60204-1: start AKTUATORU yesil olabilir
@@ -306,9 +306,8 @@ Item {
                         Layout.columnSpan: 2
                         Layout.rowSpan: 1
                         implicitHeight: Theme.btnHeightXl
-                        enabled: app.connected && app.gridData.length > 0 && !app.busy
-                        disabledReason: !app.connected ? "baglanti yok"
-                                      : app.gridData.length === 0 ? "once STL yukleyin" : "islem suruyor"
+                        enabled: app.productionBlockReason === ""
+                        disabledReason: app.productionBlockReason
                         onClicked: confirmDialog.ask("production")
                     }
                 }

@@ -183,7 +183,10 @@ arıza verir. Çözüm firmware'de değil, **interpolasyonda**: `stl_interpolato
 RS485 köprüsü 9600 baud ≈ 960 bayt/sn; bir STAT sorgu+cevap ≈ 63 bayt ≈ 66 ms.
 Tüm bekleyen modüllere aynı anda STAT atmak 16 modülde ≈ 1 sn hat trafiği (%70+ doluluk)
 → çakışma, bozuk satır, yanlış/gecikmeli bitiş teyidi. UI bu yüzden **round-robin** poll eder
-(tick başına tek modül, `OP_POLL_MS`) ve komut dağıtımı sürerken poll yapmaz.
+(tick başına tek modül, `POLL_TICK_MS`) ve komut dağıtımı sürerken poll yapmaz.
+**v2.2:** bütün seri trafik tek kuyruktan (`backend/link.py`, hatta tek bekleyen istek).
+En kötü alarm gecikmesi (`hmi_config.worst_alarm_latency_s`): N×2,8 sn + 2,5 sn → 16 modülde
+**47,3 sn** (tipik N×1 sn: 16,1 sn). Ayrıntı: `UI_v2.0_QML/docs/v2.2/ILERLEME.md`.
 
 ## Raspberry Pi dağıtımı (UI_v2.0_QML)
 

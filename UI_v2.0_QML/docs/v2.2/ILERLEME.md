@@ -8,7 +8,7 @@ _(gece sonunda doldurulacak — biçim: GOREV.md bölüm E)_
 
 ## Durum
 - Branch: `ui_v2.2` (ui_v2.0 @ 0733c9c'den açıldı)
-- Aktif faz: Faz 2
+- Aktif faz: Faz 3
 - Son commit: (Faz 0 commit'i)
 
 ## Başlangıç çalışma ağacı (dokunulmayacak)
@@ -86,6 +86,30 @@ untracked `.claude/` (içinde `settings.local.json.yedek-v22-oncesi`), `AGENTS.m
   **Sonuç:** 19 kırmızı testin hepsi yeşil, expectedFailure kalmadı. Ek testler: `test_protocol.py`,
   `test_link.py`, `test_motion_authority.py` → toplam 57 test OK. Demo (gerçek QTimer) duman testi:
   bağlan → tara → durum uzlaşması (9 sn) → üretim (HOME+ARR) 32 sn'de "Tamamlandı".
+- 05:45 — Faz 2 — Backend çekirdeği Faz 1'de kurulmuştu; bu fazda: PING zaman aşımı 300 ms +
+  100 ms koruma (tarama ~5 sn), bağlantıyı kesme yalnız işlem sürerken kapalı, QML: `StatusStrip`
+  (backend `statusInfo`; "Uyarıyı gördüm" 80 px; "Alarmlar (n)"), yeni `AlarmPanel.qml`
+  (aktif/görüldü/giderildi), `TouchButton` devre dışı sebep satırı, `Header` (Portları yenile,
+  Bağlantıyı kes kapısı, Modülleri bul kapısı), `MainPage` butonları backend kapılarına bağlı,
+  `ActionButton` sebep satırı kaydırma, `Theme.stateLabel` (S="Hedefe ulaştı", ""="Durum bilinmiyor"),
+  sonuç penceresi "Kapat" (başarı nötr renk). `tests/test_supervision.py` (24 test) +
+  `tests/shot_tour.py` (offscreen 1920×1080 ekran görüntüleri). **81 test OK.**
+
+### En kötü durum alarm gecikmesi (Faz 2a, K5)
+Kaynak: `backend/hmi_config.py` (`typical_alarm_latency_s`, `worst_alarm_latency_s`, `data_stale_s`).
+Gözetim poll'u tick (1 sn) başına TEK modül, hat boşsa; bilinen bütün modüller round-robin.
+
+| Modül (N) | Tipik (hepsi cevap veriyor) | En kötü (turdaki her istek zaman aşımı) | Veri yaşı eşiği |
+|---|---|---|---|
+| 1 | 1,1 sn | 5,3 sn | 10 sn |
+| 4 | 4,1 sn | 13,7 sn | 22,4 sn |
+| 9 | 9,1 sn | 27,7 sn | 50,4 sn |
+| 16 | 16,1 sn | **47,3 sn** | 89,6 sn |
+
+Formül: tipik = N×1 sn + 0,1 sn; en kötü = N×max(1 sn, 2,5 sn STAT zaman aşımı + 0,3 sn hat koruması)
++ 2,5 sn. Ek gecikmeler: hareket dağıtımı sırasında poll durur (modül başına ACK, normalde ~0,1 sn,
+U2 yavaşsa ~1,6 sn, en çok 2,5 sn); terminal/Bakım sorgusu başına ≤2,8 sn. Simülasyonda ölçülen
+(16 modül, biri U2-yavaş, test `AlarmLatencyTest`): **10,8 sn**. Gerçek RS485 hattında ölçülmedi.
 
 ## ENGELLENDİ / STASH
 <!-- ENGELLENDİ: <komut> — <sebep>  |  STASH: v22-wip-<konu> — <dosyalar> — <neden> -->

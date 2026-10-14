@@ -23,7 +23,7 @@ Button {
         border.width: 1
     }
     contentItem: Item {
-        implicitWidth: col.implicitWidth
+        implicitWidth: 200
         implicitHeight: col.implicitHeight
         Column {
             id: col
@@ -38,11 +38,16 @@ Button {
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.max(80, btn.width - 24)
                 visible: text.length > 0
                 text: (!btn.enabled && btn.disabledReason.length) ? btn.disabledReason : btn.subText
                 color: btn.enabled ? "#ffffff" : Theme.warn
                 opacity: btn.enabled ? 0.85 : 1.0
                 font.pixelSize: Theme.fsSmall
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
             }
         }
     }
