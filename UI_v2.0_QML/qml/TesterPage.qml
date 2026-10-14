@@ -6,26 +6,9 @@ import "Theme.js" as Theme
 Item {
     id: page
     property var logModel
-    signal applyVals(var arr)       // 9 hedef mm -> spinbox
-    signal applyStates(var letters) // 9 durum harfi -> durum cipi
-
-    function fill(v) { var a = []; for (var i = 0; i < 9; i++) a.push(v); return a }
-
-    // STAT cevabi gelince, secili modul ise spinbox + durum cipini guncelle
-    Connections {
-        target: app
-        function onStatusReceived(sid, toks) {
-            if (sid !== app.currentSlaveId) return
-            var nums = [], letters = []
-            for (var i = 0; i < 9; i++) {
-                var t = (i < toks.length) ? toks[i] : "I0"
-                letters.push(t.substring(0, 1))
-                nums.push(parseInt(t.substring(1)) || 0)
-            }
-            page.applyVals(nums)
-            page.applyStates(letters)
-        }
-    }
+    // Secili modulun SON OLCULEN durumu (backend modul deposu; kimlik + yas).
+    // moduleRevision her STAT/tick'te artar -> binding yeniden hesaplanir.
+    property var info: { app.moduleRevision; return app.moduleInfo(app.currentSlaveId) }
 
     // canli durum poll
     Timer {
@@ -154,19 +137,14 @@ Item {
                         Text { text: "Modul " + app.currentSlaveId; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                         Item { Layout.fillWidth: true }
                         TouchButton {
-                            text: "Tumunu Sifirla"; color: Theme.actionNeutral
-                            enabled: app.connected
-                            onClicked: { app.allToValue(app.currentSlaveId, 0); page.applyVals(page.fill(0)) }
-                        }
-                        TouchButton {
                             text: "Test 300 mm"; color: Theme.actionNeutral
-                            enabled: app.connected
-                            onClicked: { app.allToValue(app.currentSlaveId, 300); page.applyVals(page.fill(300)) }
+                            enabled: app.testerMoveBlockReason === ""
+                            onClicked: app.allToValue(app.currentSlaveId, 300)
                         }
                         TouchButton {
                             text: "Home Hepsi"; color: Theme.actionWarn
-                            enabled: app.connected
-                            onClicked: { app.homeSlave(app.currentSlaveId); page.applyVals(page.fill(0)) }
+                            enabled: app.testerHomeBlockReason === ""
+                            onClicked: app.homeSlave(app.currentSlaveId)
                         }
                     }
 
@@ -180,18 +158,14 @@ Item {
                             delegate: Rectangle {
                                 id: mcell
                                 required property int index
-                                property string st: "I"
+                                readonly property var mi: page.info.motors[index]
+                                readonly property string st: mi.known ? mi.letter : ""
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: Theme.radiusSm
                                 color: Theme.panelHi
                                 border.color: mcell.st === "F" ? Theme.alarm : Theme.border
                                 border.width: mcell.st === "F" ? 3 : 1
-
-                                Connections {
-                                    target: page
-                                    function onApplyStates(letters) { mcell.st = letters[index] || "I" }
-                                }
 
                                 ColumnLayout {
                                     anchors.fill: parent
@@ -247,21 +221,16 @@ Item {
                                                 selectByMouse: true
                                                 onAccepted: {
                                                     sp.value = sp.valueFromText(text, sp.locale)
-                                                    if (app.connected)
-                                                        app.moveMotor(app.currentSlaveId, index + 1, sp.value)
+                                                    app.moveMotor(app.currentSlaveId, index + 1, sp.value)
                                                 }
-                                            }
-                                            Connections {
-                                                target: page
-                                                function onApplyVals(arr) { sp.value = arr[index] }
                                             }
                                         }
                                         TouchButton {
                                             text: "Home"
                                             dense: true
                                             color: Theme.actionWarn
-                                            enabled: app.connected && !app.busy
-                                            onClicked: { app.homeMotor(app.currentSlaveId, index + 1); sp.value = 0 }
+                                            enabled: app.testerHomeBlockReason === ""
+                                            onClicked: app.homeMotor(app.currentSlaveId, index + 1)
                                         }
                                     }
 

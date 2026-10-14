@@ -23,3 +23,16 @@ Yeni bir karar çıkarsa: en muhafazakâr seçenek + aşağıya ekle.
 
 ## Gece eklenen kararlar
 <!-- Claude Code buraya ekler: | K15 | ... | ... | ... | ONAY BEKLİYOR | -->
+
+| # | Konu | Gece seçilen (muhafazakâr) | Gerekçe / alternatif | Durum |
+|---|---|---|---|---|
+| K15 | Aktif motor arızası (F) sonrası kurtarma | K8 harfiyen: aktif F varken **referans alma (HOME) dahil bütün hareket kilitli**. F kaydı yalnız modülden F'siz taze STAT gelince kapanır. Firmware F'den yalnız yeni hareket komutu veya yeniden başlatma ile çıkar → pratikte modülün enerjisinin (yetkin kişi, güvenli prosedürle) kesilip verilmesi gerekir; sonra modül I0 bildirir, kayıt kapanır, referans alınır. | Arıza sonrası fiziksel müdahaleyi zorlar. Alternatif: onaylanmış arızada yalnız o modül için Bakım ekranından "referans al" izni (firmware F→HOMING). | ONAY BEKLİYOR |
+| K16 | Hareket kilidinin kapsamı | Bilinen **herhangi bir** modülde hareket/belirsizlik (M/H, komut yolda, komut sonrası durgunluk doğrulanmadı, U2ERR/eksik STAT, veri eski, senkron dışı, erişilemez) → **bütün** hareket kilitli (Bakım dahil). | Tek parça membran: bir bölge hareket ederken başka bölge başlatılmaz. Alternatif: yalnız aynı modül. | ONAY BEKLİYOR |
+| K17 | Önceden bilinen ama artık cevap vermeyen modül | COMM alarmı (seviye 2) taze geçerli STAT gelene kadar çözülmez ve bütün hareketi kilitler. Modül bilerek çıkarıldıysa çözüm: uygulamayı yeniden başlatmak. | Cevapsız modül hareket ediyor olabilir. | ONAY BEKLİYOR |
+| K18 | Başarısız/bozuk STL yüklemesi | Yükleme başlarken eski model **bırakılır**; başarısızlıkta "yüklü model yok", BAŞLA kapalı (eski A'yı tutmak yerine). | Operatör B'yi seçti; A'nın uygulanabilir kalması karışıklık riski. | ONAY BEKLİYOR |
+| K19 | Eksi pozisyon tokenı (ör. `S-1`) | GOREV'deki katı şema `^[IMHSF]\d+$` → eksi değer **bilinmiyor**. Sayaç kayması eksi üretirse o modül "kısmen bilinmiyor" sayılır ve hareket kilitlenir. | Şema GOREV'de verildi; firmware `%ld` eksi basabilir (donanımda görülürse gevşetilmeli). | ONAY BEKLİYOR |
+| K20 | İstenmemiş STAT satırı (bekleyen isteğe ait değil) | Veri olarak **kullanılmaz** (eski olabilir); içinde F varsa **alarm üretir**; işlem sürüyorsa işlem arızayla biter. | Arıza bilgisi kaybolmasın; eski veri tamamlanma üretmesin. | ONAY BEKLİYOR |
+| K21 | Dağıtımda ERR / ACK zaman aşımı / yazma hatası | İşlem başarısız biter, **kalan modüllere komut gönderilmez**; etkilenen modül "senkron dışı" (SYNC uyarısı), izleme sürer, kör tekrar yok. | Daha az hareket. | ONAY BEKLİYOR |
+| K22 | Seri zaman aşımları | STAT/ACK/GETPOS: 2,5 sn (U3 U2'yi ≤1,5 sn bekler) + 0,3 sn hat koruması; PING: 0,3 sn + 0,1 sn (tarama ≈ 5 sn); çerçeve arası 20 ms. Değerler `backend/hmi_config.py`. | Donanımda ölçülmedi. | ONAY BEKLİYOR |
+| K23 | `expected_modules` yapılandırılmışken fazladan modül | Beklenmeyen modül bulunması da BAŞLA'yı kilitler (eksik modül gibi). | Yapılandırma ile gerçek kurulum çelişiyor. | ONAY BEKLİYOR |
+| K24 | İşlem sırasında model değişikliği | İşlem sürerken STL Seç kapalı (hedefler zaten işlem başında değişmez kopya). | Haritanın gösterdiği ile uygulanan şekil ayrışmasın. | ONAY BEKLİYOR |

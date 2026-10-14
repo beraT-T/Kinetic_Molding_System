@@ -17,7 +17,6 @@ S9_300 = ",".join(["S300"] * 9)
 class M01_WriteFailStaleS(unittest.TestCase):
     """Yazma basarisiz + eski S -> basari yok; kabul belirsizligi gorunur."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_write_fail_with_stale_S_never_succeeds(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -34,7 +33,6 @@ class M01_WriteFailStaleS(unittest.TestCase):
 class M02_StaleS300DuringHome(unittest.TestCase):
     """HOME sirasinda eski S300 -> referans tamamlanmaz, ARR baslamaz."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_stale_S300_does_not_complete_home(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -52,7 +50,6 @@ class M02_StaleS300DuringHome(unittest.TestCase):
 class M03_PartialStat(unittest.TestCase):
     """Eksik/bozuk STAT, U2ERR -> bilinmeyen motorlar ayrilir; mevcut F kaybolmaz."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_u2err_partial_stat_keeps_fault(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -66,7 +63,6 @@ class M03_PartialStat(unittest.TestCase):
         self.assertTrue(info["u2Error"])
         self.assertTrue(any(not m["known"] for m in info["motors"]))
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_garbage_tokens_are_not_success(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -81,7 +77,6 @@ class M03_PartialStat(unittest.TestCase):
 class M04_ConflictingMotionBlocked(unittest.TestCase):
     """HOME sirasinda MOV/ALL/terminal -> celiskili hareket butun girislerde engellenir."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_all_motion_paths_blocked_during_home(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -124,7 +119,6 @@ class M06_SupervisionAfterFault(unittest.TestCase):
         self.assertTrue(res and res[-1][0], f"home basarisiz: {res}")
         return r
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_fault_keeps_polling_and_locks_motion(self):
         r = self._homed_rig(speed=4.0)
         r.c.startProduction()
@@ -142,7 +136,6 @@ class M06_SupervisionAfterFault(unittest.TestCase):
         self.assertEqual(motion_cmds(sent), [], "ariza sonrasi hareket kilidi yok")
         self.assertGreaterEqual(sent.count("STAT:01"), 3, "ariza sonrasi gozetim durdu")
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_fault_alarm_survives_acknowledge(self):
         r = self._homed_rig()
         r.c.startProduction()
@@ -154,7 +147,6 @@ class M06_SupervisionAfterFault(unittest.TestCase):
         self.assertTrue(r.c.faultText, "onay arizayi sildi")
         self.assertTrue(r.active_alarms())
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_timeout_creates_persistent_alarm(self):
         r = self._homed_rig()
         r.br.stat_override[1] = ",".join(["M100"] * 9)   # hic bitmiyor
@@ -163,22 +155,20 @@ class M06_SupervisionAfterFault(unittest.TestCase):
         self.assertTrue(r.failures())
         self.assertTrue(r.active_alarms(), "zaman asimi kalici kayit uretmedi")
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_completed_module_rearm_is_supervised(self):
-        r = self._homed_rig()
+        r = self._homed_rig(speed=4.0)
         n0 = len(r.results)
         r.c.startProduction()
         r.run_until(lambda: len(r.results) > n0, max_s=200)
         self.assertTrue(r.results[-1][0])
-        r.br.disturb(1, 2, 5.0)          # firmware REARM: S -> M
-        r.run_s(6)
+        r.br.disturb(1, 2, 50.0)         # firmware REARM: S -> M (4 mm/s ~12 sn)
+        r.run_s(4)
         self.assertTrue(r.c.motionLocked, "yeniden harekete gecen modul izlenmiyor")
 
 
 class M07_StaleDispatch(unittest.TestCase):
     """Eski dispatch callback -> yeni ise komut sizmaz."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_old_dispatch_does_not_leak(self):
         r = Rig(modules=(1, 2))
         r.setup()
@@ -197,7 +187,6 @@ class M07_StaleDispatch(unittest.TestCase):
 class M08_AtomicStl(unittest.TestCase):
     """Bozuk yeni STL -> eski hedef yeni ad altinda uygulanamaz."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_failed_load_does_not_rename_old_grid(self):
         d = tmpdir()
         a = write_box_stl(os.path.join(d, "A.stl"), height=40)
@@ -226,7 +215,6 @@ class M08_AtomicStl(unittest.TestCase):
 class M09_UsbDisconnect(unittest.TestCase):
     """USB kopma / yeniden baglanma -> guncellik ve referans duser; otomatik hareket yok."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_disconnect_invalidates_state(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -238,7 +226,6 @@ class M09_UsbDisconnect(unittest.TestCase):
         self.assertFalse(r.c.allHomed)
         self.assertTrue(r.active_alarms(), "kopma alarmi yok")
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_manual_disconnect_clears_active_list(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -246,7 +233,6 @@ class M09_UsbDisconnect(unittest.TestCase):
         r.run(100)
         self.assertEqual(list(r.c.activeSlaves), [])
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_reconnect_does_not_resume_motion(self):
         r = Rig(modules=(1,), speed=10.0)
         r.setup()
@@ -264,7 +250,6 @@ class M09_UsbDisconnect(unittest.TestCase):
 class M10_SlaveReset(unittest.TestCase):
     """Slave reset -> once guncel durum uzlastirilir; referans varsayilmaz."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_nine_I0_invalidates_reference(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -279,22 +264,22 @@ class M10_SlaveReset(unittest.TestCase):
 class M11_SingleSerialManager(unittest.TestCase):
     """16 modul + gecikme + canli poll -> tek seri islem duzeni (hatta tek bekleyen istek)."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_no_overlapping_requests(self):
         r = Rig(modules=range(1, 17), speed=50.0)
-        r.br.mods[5].u2_down = True          # modul 5: U2 cevapsiz (~1,5 sn gecikme)
+        r.br.u2_slow_ms[5] = 1450            # modul 5: U2 gec cevap veriyor (~1,5 sn)
         r.setup()
+        m = r.mark()
         r.c.startProduction()
         for k in range(80):                  # Tester "canli durum" + operator sorgulari
             r.c.requestStatus(k % 16 + 1)
             r.run(400)
+        self.assertIn("HOME:16", r.sent_since(m), "uretim baslamadi")
         self.assertEqual(r.br.overlaps, 0, "cevap beklenirken hatta yeni komut yazildi")
 
 
 class M12_TargetValidation(unittest.TestCase):
     """Bos, metin, eksi, >590 hedef -> hareket gonderilmez; neden aciklanir."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_invalid_targets_not_sent(self):
         r = Rig(modules=(1,))
         r.setup()
@@ -320,7 +305,6 @@ class M12_TargetValidation(unittest.TestCase):
 class M13_BoundedSerialStream(unittest.TestCase):
     """Uzun/bozuk seri akis -> tampon sinirli."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_line_assembler_bounded(self):
         from serial_manager import LineAssembler
         asm = LineAssembler(max_len=256)
@@ -333,7 +317,6 @@ class M13_BoundedSerialStream(unittest.TestCase):
 class M14_StopText(unittest.TestCase):
     """Fiziksel durdurma: yazilim dogrulanmamis durdurma talimati vermemeli."""
 
-    @unittest.expectedFailure  # KIRMIZI (v2.0)
     def test_busy_overlay_has_no_unverified_stop_instruction(self):
         with open(os.path.join(QML_DIR, "BusyOverlay.qml"), encoding="utf-8") as f:
             src = f.read()

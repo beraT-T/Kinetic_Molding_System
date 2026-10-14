@@ -63,7 +63,8 @@ class SimBridge:
         self.write_ok = True          # bool veya callable(cmd) -> bool
         self.reply_filter = None      # callable(cmd, line) -> line | None (None = kayip)
         self.stat_override = {}       # sid -> "S0,S0,..." (sabit token dizisi)
-        self.extra_delay_ms = {}      # sid -> ek cevap gecikmesi
+        self.extra_delay_ms = {}      # sid -> ek cevap gecikmesi (butun cevaplar)
+        self.u2_slow_ms = {}          # sid -> U2'nin cevap suresi (yalniz U2 iceren komutlar)
 
         # --- gozlem ---
         self.sent = []                # gonderilen komutlar (yazma basarili)
@@ -246,7 +247,7 @@ class SimBridge:
         if mod is None or mod.u3_down:
             return
         d = self.reply_delay_ms
-        u2_ms = self.u2_timeout_ms if mod.u2_down else 15
+        u2_ms = self.u2_timeout_ms if mod.u2_down else self.u2_slow_ms.get(sid, 15)
         u2set = set(self._u2_motors())
 
         if verb == "PING":

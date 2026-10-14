@@ -1,0 +1,7 @@
+{
+  "_aciklama": "Makine yapilandirmasi (v2.2). null = YAPILANDIRILMADI: arayuz varsayim yapmaz, muhafazakar davranir. Ayrinti: docs/v2.2/KARARLAR.md K3/K4.",
+  "_expected_modules": "Takili modul numaralari, ornek [1, 2, 3, 4]. null ise BASLA oncesi bulunan moduller tek tek listelenip onay istenir.",
+  "expected_modules": null,
+  "_firmware_variant": "\"v5.1\" (U2 = motor 1-5) veya \"v5f411\" (U2 = motor 5-9). null ise U2ERR gelince yerel tokenlarin hangi motora ait oldugu belirlenmez.",
+  "firmware_variant": null
+}

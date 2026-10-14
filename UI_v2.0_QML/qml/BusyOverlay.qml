@@ -9,7 +9,9 @@ import "Theme.js" as Theme
 // Kazara dokunma, aksiyon butonlarinin devre disi birakilmasiyla onlenir.
 Item {
     id: root
-    visible: app.busy
+    // Herhangi bir hareket komutu yolda/kabul edilmisken veya hareket suruyor/
+    // durgunlugu dogrulanmamisken gorunur (Bakim hareketleri dahil).
+    visible: app.busy || app.motionActive
     z: 1500
 
     property string phase: ""
@@ -29,7 +31,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: Theme.panel
-        border.color: Theme.warn
+        border.color: Theme.border
         border.width: 2
         radius: Theme.radius
 
@@ -43,7 +45,8 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.gapMin
                 Text {
-                    text: root.phase.length ? root.phase : "Islem suruyor"
+                    text: app.busy ? (root.phase.length ? root.phase : "İşlem sürüyor")
+                                   : "Hareket izleniyor (işlem sonuçlandı)"
                     color: Theme.text; font.bold: true
                     font.pixelSize: Theme.fsTitle
                 }
@@ -89,20 +92,24 @@ Item {
                 }
             }
 
-            // DURDURMA TALIMATI - makinenin tek durdurma yolu, en okunur metin olmali
+            // DURDURMA SINIRI (v2.2): protokolde host STOP/ABORT yok, fiziksel E-stop
+            // dogrulanmadi -> yalniz DOGRU olan soylenir; talimat/anahtar adi UYDURULMAZ.
+            // Normal hareket = notr zemin (alarm kirmizisi yalniz gercek ariza icin).
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: stopRow.implicitHeight + 16
                 radius: Theme.radiusSm
-                color: Theme.alarm
+                color: Theme.panelHi
+                border.color: Theme.warn
+                border.width: 2
                 RowLayout {
                     id: stopRow
                     anchors.centerIn: parent
                     spacing: Theme.gapMin
-                    Text { text: "⛔"; font.pixelSize: Theme.fsButtonLg }
+                    Text { text: "⚠"; color: Theme.warn; font.pixelSize: Theme.fsButtonLg }
                     Text {
-                        text: "DURDURMAK ICIN CIHAZIN GUCUNU KESIN"
-                        color: "#ffffff"; font.bold: true
+                        text: "Bu arayüzden hareket durdurulamıyor."
+                        color: Theme.text; font.bold: true
                         font.pixelSize: Theme.fsButtonLg
                     }
                 }

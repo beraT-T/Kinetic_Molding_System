@@ -8,7 +8,7 @@ _(gece sonunda doldurulacak — biçim: GOREV.md bölüm E)_
 
 ## Durum
 - Branch: `ui_v2.2` (ui_v2.0 @ 0733c9c'den açıldı)
-- Aktif faz: Faz 1
+- Aktif faz: Faz 2
 - Son commit: (Faz 0 commit'i)
 
 ## Başlangıç çalışma ağacı (dokunulmayacak)
@@ -72,6 +72,20 @@ untracked `.claude/` (içinde `settings.local.json.yedek-v22-oncesi`), `AGENTS.m
 | Uzun/bozuk seri akış | M13 `test_line_assembler_bounded` | KIRMIZI: sınırlı tampon yok |
 | Fiziksel durdurma (metin) | M14 `test_busy_overlay_has_no_unverified_stop_instruction` | KIRMIZI: "GUCUNU KESIN" metni |
 | (QML yükleme) | `test_main_qml_loads_without_warnings` | YEŞİL |
+- 05:05 — Faz 1 — Controller yeniden yazıldı (`backend/controller.py`), yeni: `protocol.py`
+  (katı STAT, ACK eşleme, terminal fiil, hedef doğrulama), `link.py` (tek seri işlem yöneticisi),
+  `hmi_config.py` (sabitler + `config/machine.json`), `serial_manager.py` (yazıcı thread,
+  write_timeout, sınırlı tampon, kopma bildirimi), `stl_interpolator.interpolate_stl_to_grid_info`
+  (aynı algoritma, bilgi döner — eski fonksiyonla birebir aynı sonuç doğrulandı).
+  **Not:** 1b'nin "bu işleme ait ACK + ACK'ten sonra istenmiş STAT" şartı tek-istek seri yönetici
+  olmadan yazılamadığı için 2a (link), 2e (alarm modeli) ve 3a (atomik model) çekirdekleri bu
+  commit'te kuruldu; QML tarafı (alarm listesi, veri yaşı, Tester yeniden tasarımı) sonraki fazlarda.
+  QML (asgari): Tester butonları backend kapısına bağlandı, "Tümünü Sıfırla" kaldırıldı (K6),
+  BusyOverlay metni "Bu arayüzden hareket durdurulamıyor." + nötr/amber + `motionActive`'te görünür,
+  terminal red sebebini gösterir.
+  **Sonuç:** 19 kırmızı testin hepsi yeşil, expectedFailure kalmadı. Ek testler: `test_protocol.py`,
+  `test_link.py`, `test_motion_authority.py` → toplam 57 test OK. Demo (gerçek QTimer) duman testi:
+  bağlan → tara → durum uzlaşması (9 sn) → üretim (HOME+ARR) 32 sn'de "Tamamlandı".
 
 ## ENGELLENDİ / STASH
 <!-- ENGELLENDİ: <komut> — <sebep>  |  STASH: v22-wip-<konu> — <dosyalar> — <neden> -->

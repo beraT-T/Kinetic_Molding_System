@@ -1,21 +1,71 @@
 """
-Seri port yoneticisi - pyserial + arka plan okuma thread'i.
-Cerceveden bagimsiz; satir geldikce verilen callback'i cagirir.
+Seri port yoneticisi - pyserial + arka plan OKUYUCU ve YAZICI thread'leri.
+
+v2.2 degisiklikleri:
+  - Yazma UI thread'inde DEGIL: write_async() kuyruga koyar, yazici thread yazar,
+    sonucu callback ile bildirir. write_timeout tanimli (takilan port UI'yi dondurmaz).
+  - Okuma tamponu sinirli (LineAssembler): satir sonu gelmeyen akis SERIAL_MAX_LINE'i
+    asinca atilir ve bildirilir.
+  - Okuyucu istisnalari YUTULMAZ: port hatasi (USB cikti vb.) on_disconnect ile bildirilir.
+  - serial_for_url: gercek cihaz yolu veya pyserial URL'si (testte "loop://").
+
+Cerceveden bagimsiz; callback'ler okuyucu/yazici thread'inden cagrilir.
 """
+import queue
 import threading
 import time
 
 import serial
 import serial.tools.list_ports
 
+from hmi_config import SERIAL_WRITE_TIMEOUT_S, SERIAL_MAX_LINE
+
+
+class LineAssembler:
+    """Gelen bayt akisini satirlara boler; tamponu sinirlar."""
+
+    def __init__(self, max_len=SERIAL_MAX_LINE):
+        self.max_len = int(max_len)
+        self._buf = ""
+        self.dropped = 0           # sinir asimi nedeniyle atilan karakter
+
+    def pending_len(self):
+        return len(self._buf)
+
+    def feed(self, text):
+        out = []
+        self._buf += text
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            line = line.strip().replace("\r", "")
+            if line:
+                if len(line) > self.max_len:
+                    self.dropped += len(line)
+                    continue
+                out.append(line)
+        if len(self._buf) > self.max_len:
+            self.dropped += len(self._buf)
+            self._buf = ""
+        return out
+
+
+class _Session:
+    """Bir acik baglanti. Thread'ler kendi oturumlarina bakar: kapatilip hemen
+    yeniden acilan port eski thread'in hatasiyla yeni baglantiyi dusurmez."""
+
+    def __init__(self, ser):
+        self.ser = ser
+        self.running = True
+        self.wq = queue.Queue()
+        self.lock = threading.Lock()
+
 
 class SerialManager:
-    def __init__(self, on_line=None):
-        self._ser = None
-        self._lock = threading.Lock()
-        self._reader = None
-        self._running = False
-        self.on_line = on_line          # callback(str)
+    def __init__(self, on_line=None, on_disconnect=None, on_noise=None):
+        self._s = None
+        self.on_line = on_line            # callback(str)        - okuyucu thread'i
+        self.on_disconnect = on_disconnect  # callback(str)      - okuyucu thread'i
+        self.on_noise = on_noise          # callback(str)        - okuyucu thread'i
 
     # ---- port listesi ----
     @staticmethod
@@ -27,71 +77,95 @@ class SerialManager:
 
     @property
     def is_open(self):
-        return self._ser is not None and self._ser.is_open
+        s = self._s
+        return s is not None and s.running and s.ser.is_open
 
     # ---- baglan / kes ----
     def open(self, port, baud=115200):
         self.close()
-        self._ser = serial.Serial(port, baud, timeout=0.1)
+        ser = serial.serial_for_url(port, baudrate=baud, timeout=0.1,
+                                    write_timeout=SERIAL_WRITE_TIMEOUT_S)
         try:
-            self._ser.reset_input_buffer()
-            self._ser.reset_output_buffer()
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
         except Exception:
             pass
-        self._running = True
-        self._reader = threading.Thread(target=self._read_loop, daemon=True)
-        self._reader.start()
+        s = _Session(ser)
+        self._s = s
+        threading.Thread(target=self._read_loop, args=(s,), daemon=True).start()
+        threading.Thread(target=self._write_loop, args=(s,), daemon=True).start()
         return True
 
     def close(self):
-        self._running = False
-        if self._reader and self._reader.is_alive():
-            self._reader.join(timeout=0.5)
-        self._reader = None
-        with self._lock:
-            if self._ser:
+        """UI thread'ini bekletmez: thread'lere dur sinyali verilir, port ayri
+        thread'de kapatilir (yazici write_timeout kadar mesgul olabilir)."""
+        s, self._s = self._s, None
+        if s is None:
+            return
+        s.running = False
+        s.wq.put(None)
+
+        def _close():
+            with s.lock:
                 try:
-                    self._ser.close()
+                    s.ser.close()
                 except Exception:
                     pass
-            self._ser = None
+        threading.Thread(target=_close, daemon=True).start()
 
     # ---- gonder ----
-    def write_line(self, text):
-        """Komutu \r\n ile gonder."""
-        if not self.is_open:
-            return False
+    def write_async(self, text, done_cb):
+        """Komutu yazici thread'ine ver. done_cb(ok) yazici thread'inden cagrilir."""
+        s = self._s
+        if s is None or not s.running:
+            done_cb(False)
+            return
         if not text.endswith("\n"):
             text = text + "\r\n"
-        with self._lock:
+        s.wq.put((text, done_cb))
+
+    def _write_loop(self, s):
+        while True:
+            item = s.wq.get()
+            if item is None:
+                return
+            text, cb = item
+            ok = False
+            if s.running:
+                data = text.encode("utf-8")
+                with s.lock:
+                    try:
+                        n = s.ser.write(data)
+                        s.ser.flush()
+                        ok = (n == len(data))
+                    except Exception:
+                        ok = False
             try:
-                self._ser.write(text.encode("utf-8"))
-                self._ser.flush()
-                return True
+                cb(ok)
             except Exception:
-                return False
+                pass
 
     # ---- arka plan okuma ----
-    def _read_loop(self):
-        buf = ""
-        while self._running:
+    def _read_loop(self, s):
+        asm = LineAssembler()
+        while s.running:
             try:
-                if not self.is_open:
-                    time.sleep(0.2)
-                    continue
-                n = self._ser.in_waiting
+                n = s.ser.in_waiting
                 if n:
-                    raw = self._ser.read(n).decode("utf-8", errors="ignore")
-                    buf += raw
-                    if "\n" in buf:
-                        parts = buf.split("\n")
-                        buf = parts[-1]
-                        for line in parts[:-1]:
-                            line = line.strip().replace("\r", "")
-                            if line and self.on_line:
-                                self.on_line(line)
+                    raw = s.ser.read(n).decode("utf-8", errors="replace")
+                    before = asm.dropped
+                    for line in asm.feed(raw):
+                        if s.running and self.on_line:
+                            self.on_line(line)
+                    if asm.dropped != before and self.on_noise:
+                        self.on_noise("Satır sonu gelmeyen veri atıldı "
+                                      f"({asm.dropped - before} karakter)")
                 else:
                     time.sleep(0.005)
-            except Exception:
-                buf = ""
-                time.sleep(0.1)
+            except Exception as e:
+                # kopma (USB cikti, port kapandi): YUTULMAZ, bildirilir
+                if s.running:
+                    s.running = False
+                    if self.on_disconnect:
+                        self.on_disconnect(str(e) or e.__class__.__name__)
+                return

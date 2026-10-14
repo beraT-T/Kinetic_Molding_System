@@ -7,6 +7,15 @@ Rectangle {
     id: root
     property var logModel
     property bool showInput: true
+    property string rejectText: ""     // son reddedilen komutun sebebi
+
+    // Terminal de ayni hareket yetkisinden gecer; reddedilirse sebep gosterilir.
+    function submit() {
+        if (!cmdField.text.length) return
+        var r = app.sendRaw(cmdField.text)
+        root.rejectText = r
+        if (r === "") cmdField.text = ""
+    }
     color: "#050a14"
     radius: Theme.radius
     border.color: Theme.border
@@ -64,13 +73,21 @@ Rectangle {
                 font.family: "monospace"
                 font.pixelSize: Theme.fsButton
                 background: Rectangle { radius: Theme.radiusSm; color: "#0b1322"; border.color: Theme.border }
-                onAccepted: { if (text.length) { app.sendRaw(text); text = "" } }
+                onAccepted: root.submit()
             }
             TouchButton {
                 text: "Gonder"
                 color: Theme.actionPrimary
-                onClicked: { if (cmdField.text.length) { app.sendRaw(cmdField.text); cmdField.text = "" } }
+                onClicked: root.submit()
             }
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: root.showInput && root.rejectText.length > 0
+            text: "Gönderilmedi: " + root.rejectText
+            color: Theme.warn
+            font.pixelSize: Theme.fsSmall
+            wrapMode: Text.WordWrap
         }
     }
 }
