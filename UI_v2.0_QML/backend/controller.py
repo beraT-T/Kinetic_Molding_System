@@ -97,6 +97,9 @@ class ModState:
         self.sync_prev = None
         self.sync_count = 0
         self.last_body = None       # gunluk sadelestirme
+        # son KABUL EDILEN komut hedefi (motor basina mm; None = yok/belirsiz).
+        # Olcum (motors) ile karistirilmaz; STAT bunu degistirmez.
+        self.targets = [None] * MOTORS_PER_MODULE
 
     def letters(self):
         return [m[0] if m else None for m in self.motors]
@@ -638,6 +641,7 @@ class Controller(QObject):
         if "I" in letters and (m.seen_non_I or m.homed):
             m.seen_non_I = False
             m.homed = False
+            m.targets = [None] * MOTORS_PER_MODULE
             self._raise(f"SYNC:{sid}", "SYNC", 1, sid, None,
                         f"Modül {sid} yeniden başlamış olabilir (durum I). Referans geçersiz; "
                         "sayaçlar sıfırlandı, fiziksel konum bilinmiyor")
@@ -1143,6 +1147,11 @@ class Controller(QObject):
             m.sync_prev, m.sync_count = None, 0
             if req.verb == "HOME":
                 m.homed = False
+            # kabul belirsiz: hangi motorun hangi hedefe gittigi bilinmiyor
+            if req.verb == "MOV" and req.motor:
+                m.targets[req.motor - 1] = None
+            else:
+                m.targets = [None] * MOTORS_PER_MODULE
             self._raise(f"SYNC:{sid}", "SYNC", 1, sid, None, why)
         # ---- islem seviyesinde etki ----
         op = self._op
@@ -1152,6 +1161,11 @@ class Controller(QObject):
             return
         if ok:
             op["ack"][sid] = self._ts.now()
+            if m is not None:
+                exp = op["phases"][op["pi"]]["expect"][sid]
+                for i, e in enumerate(exp):
+                    if e is not None:
+                        m.targets[i] = e[0]
             op["di"] += 1
             self._dispatch_next(op["id"], op["pi"])
             self._changed()
@@ -1414,8 +1428,10 @@ class Controller(QObject):
         motors = []
         for i in range(MOTORS_PER_MODULE):
             mt = m.motors[i] if m else None
+            tgt = m.targets[i] if m else None
             motors.append({"known": mt is not None, "letter": mt[0] if mt else "",
                            "mm": mt[1] if mt else -1,
+                           "target": -1 if tgt is None else int(tgt),
                            "fault": bool(mt and mt[0] == "F")})
         age = self._age_s(m)
         thr = data_stale_s(max(1, len(self._get_known())))

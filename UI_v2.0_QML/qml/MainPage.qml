@@ -8,52 +8,56 @@ Item {
     id: page
     property var logModel
 
-    // yuklu STL adi (app.stlFileUrl'den turetilir)
-    function stlName() {
-        var u = app.stlFileUrl.toString()
-        if (!u.length) return ""
-        return decodeURIComponent(u.split("/").pop())
-    }
+    function modList(a) { return (a && a.length) ? a.join(", ") : "—" }
 
     // Native QML dosya secici (kullanici tercihi)
     FileDialog {
         id: fileDialog
-        title: "STL dosyasi sec"
-        nameFilters: ["STL dosyalari (*.stl)"]
+        title: "STL dosyası seç"
+        nameFilters: ["STL dosyaları (*.stl)"]
         onAccepted: app.loadStl(selectedFile)
     }
 
-    // Hareket baslatmadan once onay (fiziksel makine hareket edecek)
+    // Hareket baslatmadan once onay (fiziksel makine hareket edecek).
+    // Onay metni: model adi, hedef modul listesi, motor sayisi (v2.2). "Vazgeç" yalniz
+    // pencereyi kapatir; hicbir hareketi iptal etmez (bu arayuzden hareket durdurulamaz).
     AppDialog {
         id: confirmDialog
         property string action: ""
         function ask(what) {
             confirmDialog.action = what
+            var p = app.productionPlan
+            var mods = "Modüller: " + page.modList(p.modules) + " (" + p.motors + " motor)"
+            var exp = p.expectedConfigured
+                      ? ("Beklenen modüller (machine.json): " + page.modList(p.expected) + ".")
+                      : ("Beklenen modül listesi YAPILANDIRILMADI: yalnız taramada bulunan modüller " +
+                         "hareket eder. Takılı bütün modüllerin listede olduğunu kontrol edin.")
+            var stop = "\nBu arayüzden hareket durdurulamıyor. Kalıp alanını boşaltın."
             if (what === "production") {
-                // Referans uyarisi burada cikar (baglantida degil).
-                // Tum moduller referans aldiysa home tekrarlanmaz.
-                if (!app.allHomed)
-                    show("Referans alinmadi",
-                         "Bazi moduller bu oturumda henuz referans almadi.\n" +
-                         "Once tum bagli modullerde home yapilacak, ardindan model " +
-                         "sekli uygulanacak.\n\n" +
-                         "Toplam sure yaklasik 5 dakika. Kalip alanini bosaltin.",
-                         "Home Yap ve Basla", "Iptal", Theme.warn)
+                if (p.needHome && p.needHome.length > 0)
+                    show("Üretimi başlat: önce referans",
+                         "Model: " + p.model + "\n" + mods + "\n" + exp + "\n\n" +
+                         "Referansı olmayan modül var (" + page.modList(p.needHome) + "). Önce bütün " +
+                         "listelenen modüllerde referans alınacak, ardından model şekli uygulanacak " +
+                         "(toplam ~5 dk'ya kadar)." + stop,
+                         "Referans al ve başla", "Vazgeç", Theme.warn)
                 else
-                    show("Uretimi baslat",
-                         "Tum moduller referans almis durumda; dogrudan model sekli " +
-                         "uygulanacak (~150 sn).\n\nKalip alanini bosaltin.",
-                         "Basla", "Iptal", Theme.actionStart)
+                    show("Üretimi başlat",
+                         "Model: " + p.model + "\n" + mods + "\n" + exp + "\n\n" +
+                         "Bütün modüllerde referans alma tamamlandı (firmware bildirimi); doğrudan " +
+                         "model şekli uygulanacak (~150 sn'ye kadar)." + stop,
+                         "Başla", "Vazgeç", Theme.actionStart)
             }
             else if (what === "home")
                 show("Referans al",
-                     "Tum bagli modullerde tum eksenler sifira inecek (~150 sn).",
-                     "Home Yap", "Iptal", Theme.warn)
+                     mods + "\nBütün motorlar geri çekilip referans alacak (~150 sn'ye kadar)." + stop,
+                     "Referans al", "Vazgeç", Theme.warn)
             else
-                show("Secili module uygula",
-                     "Modul " + app.currentSlaveId + " icin model sekli uygulanacak (~150 sn).\n" +
-                     "Bu bir test islemidir; referans alinmamissa pozisyonlar hatali olabilir.",
-                     "Uygula", "Iptal", Theme.actionNeutral)
+                show("Seçili modüle uygula",
+                     "Model: " + p.model + "\nModül: " + app.currentSlaveId + " (9 motor)\n" +
+                     "Bu bir test işlemidir; yalnız bu modülün hedefleri uygulanır (~150 sn'ye kadar)." +
+                     stop,
+                     "Uygula", "Vazgeç", Theme.actionNeutral)
         }
         onAccepted: {
             if (action === "production") app.startProduction()
@@ -75,61 +79,90 @@ Item {
         spacing: 16
 
         // ---------- SOL: STL + 3D + terminal ----------
-        // Sabit genislikli kontrol sutunu. NOT: RowLayout icinde ic-ice
-        // ColumnLayout sadece preferredWidth ile genisligini tutmaz (fillWidth
-        // kardesini sifira sikistirir); min=max ile sabitlenir.
+        // NOT: RowLayout icinde ic-ice ColumnLayout sadece preferredWidth ile
+        // genisligini tutmaz (fillWidth kardesini sifira sikistirir); min=max ile sabitlenir.
         ColumnLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 520
             Layout.fillHeight: true
             spacing: 14
 
-            // dosya
+            // dosya + model durumu (yukleniyor / hazir / hata) + donusum bilgisi
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Theme.btnHeight + 28
+                Layout.preferredHeight: Theme.btnHeight + 28 + (infoLine.visible ? infoLine.implicitHeight + 6 : 0)
                 radius: Theme.radius
                 color: Theme.panel
-                border.color: Theme.border
-                RowLayout {
+                border.color: app.modelState === "error" ? Theme.warn : Theme.border
+                ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: Theme.gapMin
-                    Column {
+                    spacing: 6
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "STL MODELI"; color: Theme.textDim; font.bold: true
-                            font.pixelSize: Theme.fsSmall; font.letterSpacing: 1 }
-                        Text {
-                            text: page.stlName().length ? page.stlName() : "Dosya secilmedi"
-                            color: page.stlName().length ? Theme.text : Theme.textFaint
-                            font.pixelSize: Theme.fsBody; 
-                            elide: Text.ElideMiddle; width: 250
-                        }
-                    }
-                    // model istatistikleri (sayilar monospace - sutun hizasi)
-                    Repeater {
-                        model: [
-                            { k: "MIN", v: app.stats && app.stats.min  !== undefined ? app.stats.min  : null },
-                            { k: "MAX", v: app.stats && app.stats.max  !== undefined ? app.stats.max  : null },
-                            { k: "ORT", v: app.stats && app.stats.mean !== undefined ? app.stats.mean : null }
-                        ]
-                        delegate: Column {
-                            Layout.rightMargin: 20
-                            Text { text: modelData.k; color: Theme.textFaint
+                        spacing: Theme.gapMin
+                        Column {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: "STL MODELİ"; color: Theme.textDim; font.bold: true
                                 font.pixelSize: Theme.fsSmall; font.letterSpacing: 1 }
-                            Text { text: modelData.v !== null ? (modelData.v + " mm") : "--"
-                                color: Theme.text; font.bold: true
-                                font.pixelSize: Theme.fsValue
-                                font.family: Theme.fontMono }
+                            Text {
+                                width: parent.width
+                                text: app.modelState === "loading" ? ("Hesaplanıyor: " + app.loadingName + " …")
+                                    : app.modelState === "error" ? ("Yüklenemedi: " + app.loadingName)
+                                    : app.modelState === "ready" ? app.modelName
+                                    : "Dosya seçilmedi"
+                                color: app.modelState === "ready" ? Theme.text
+                                     : app.modelState === "idle" ? Theme.textFaint : Theme.warn
+                                font.pixelSize: Theme.fsBody
+                                font.bold: app.modelState === "error"
+                                elide: Text.ElideMiddle
+                            }
+                        }
+                        // model istatistikleri (sayilar monospace - sutun hizasi)
+                        Repeater {
+                            model: [
+                                { k: "MİN", v: app.stats && app.stats.min  !== undefined ? app.stats.min  : null },
+                                { k: "MAKS", v: app.stats && app.stats.max  !== undefined ? app.stats.max  : null },
+                                { k: "ORT", v: app.stats && app.stats.mean !== undefined ? app.stats.mean : null }
+                            ]
+                            delegate: Column {
+                                Layout.rightMargin: 20
+                                Text { text: modelData.k; color: Theme.textFaint
+                                    font.pixelSize: Theme.fsSmall; font.letterSpacing: 1 }
+                                Text { text: modelData.v !== null ? (modelData.v + " mm") : "--"
+                                    color: Theme.text; font.bold: true
+                                    font.pixelSize: Theme.fsValue
+                                    font.family: Theme.fontMono }
+                            }
+                        }
+                        TouchButton {
+                            text: "STL Seç"
+                            color: Theme.actionPrimary
+                            enabled: app.modelBlockReason === ""
+                            disabledReason: app.modelBlockReason
+                            onClicked: fileDialog.open()
                         }
                     }
-                    TouchButton {
-                        text: "STL Seç"
-                        color: Theme.actionPrimary
-                        enabled: app.modelBlockReason === ""
-                        disabledReason: app.modelBlockReason
-                        onClicked: fileDialog.open()
+                    // donusum seffafligi (3b): algoritma degismedi, yaptigi gosterilir
+                    Text {
+                        id: infoLine
+                        Layout.fillWidth: true
+                        visible: app.modelState === "ready" || app.modelState === "error"
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        font.pixelSize: Theme.fsSmall
+                        readonly property var mi: app.modelInfo
+                        readonly property int clipped: (mi.clipped_low || 0) + (mi.clipped_high || 0)
+                        color: app.modelState === "error" || (mi.filled > 0 || clipped > 0) ? Theme.warn : Theme.textDim
+                        text: app.modelState === "error"
+                              ? ("Dosya STL olarak okunamadı veya hesaplanamadı; yüklü model yok. " + app.modelError)
+                              : (((mi.filled > 0 || clipped > 0) ? "⚠ " : "") +
+                                 "Model dışında kalıp en yüksek değerle doldurulan: " + (mi.filled || 0) +
+                                 " hücre · " + app.safeMinMm + "–" + app.safeMaxMm + " mm sınırına kırpılan: " +
+                                 clipped + " hücre · en büyük komşu farkı: " + (mi.max_neighbor || 0) +
+                                 " mm (membran sınırı tanımlı değil)")
                     }
                 }
             }
@@ -151,7 +184,10 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 10
                         spacing: 6
-                        Text { text: "3D ONIZLEME"; color: Theme.textDim; font.bold: true
+                        Text { text: "3D ÖNİZLEME — model hedefleri (ölçülen konum değildir)"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            color: Theme.textDim; font.bold: true
                             font.pixelSize: Theme.fsSmall; font.letterSpacing: 1 }
                         Surface3D {
                             Layout.fillWidth: true
@@ -171,7 +207,7 @@ Item {
             }
         }
 
-        // ---------- SAG: pozisyon haritasi (kare -> genislik yukseklige gore) ----------
+        // ---------- SAG: model hedef haritasi (kare -> genislik yukseklige gore) ----------
         ColumnLayout {
             Layout.preferredWidth: 600
             Layout.minimumWidth: 600
@@ -179,7 +215,6 @@ Item {
             Layout.fillHeight: true
             spacing: 14
 
-            // heatmap + istatistikler (ayri serit yerine ayni panelde - yer kazanci)
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -193,9 +228,10 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "POZISYON HARITASI  ·  12 × 12  ·  144 MOTOR"
+                        text: "MODEL HEDEFLERİ — ölçülen konum değildir  ·  12 × 12"
                         color: Theme.textDim; font.bold: true
                         font.pixelSize: Theme.fsSmall; font.letterSpacing: 1
+                        elide: Text.ElideRight
                     }
 
                     // Harita KARE (12x12) + yaninda renk olcegi (legend)
@@ -265,7 +301,7 @@ Item {
                     RowLayout {
                         Layout.columnSpan: 4
                         spacing: Theme.gapMin
-                        Text { text: "Hedef Modul:"; color: Theme.textDim; font.pixelSize: Theme.fsBody }
+                        Text { text: "Hedef modül:"; color: Theme.textDim; font.pixelSize: Theme.fsBody }
                         SpinBox {
                             from: 1; to: 16
                             value: app.currentSlaveId
@@ -275,15 +311,18 @@ Item {
                             enabled: !app.busy
                         }
                         Text {
-                            text: "Bagli: [" + app.activeSlaves.join(", ") + "]"
+                            text: "Bulunan modüller: " + page.modList(app.activeSlaves) +
+                                  (app.expectedModules.length
+                                   ? ("   ·   Beklenen: " + page.modList(app.expectedModules))
+                                   : "   ·   Beklenen liste yapılandırılmadı")
                             color: Theme.textDim; font.pixelSize: Theme.fsSmall
                             font.family: Theme.fontMono
                         }
                     }
 
-                    // Test: yalnizca secili module gonder (home zorunlu degil)
+                    // Test: yalnizca secili module gonder (referans gerekli)
                     ActionButton {
-                        text: "Secili Module Uygula"; subText: "test"
+                        text: "Seçili modüle uygula"; subText: "test · referans gerekli"
                         color: Theme.actionNeutral
                         enabled: app.sendSelectedBlockReason === ""
                         disabledReason: app.sendSelectedBlockReason
@@ -291,7 +330,7 @@ Item {
                     }
                     // Sadece referans alma
                     ActionButton {
-                        text: "Home"; subText: "tum moduller"
+                        text: "Referans al"; subText: "bulunan bütün modüller"
                         color: Theme.actionWarn
                         enabled: app.homeAllBlockReason === ""
                         disabledReason: app.homeAllBlockReason
@@ -301,7 +340,7 @@ Item {
                     // (Theme'deki "yesili gostergede kullanma" kurali butona uygulanmaz).
                     // Tehlikeli hareketi baslatan tek kontrol -> en buyuk hedef (~25 mm).
                     ActionButton {
-                        text: "BASLA"; subText: "referans + sekil uygula"
+                        text: "BAŞLA"; subText: "referans + şekil uygula"
                         color: Theme.actionStart
                         Layout.columnSpan: 2
                         Layout.rowSpan: 1

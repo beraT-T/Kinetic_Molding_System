@@ -3,18 +3,58 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "Theme.js" as Theme
 
+// BAKIM / MOTOR TESTI (Seviye-4 teknisyen ekrani; yogunluk icin touchDense bilincli sapma).
+// v2.2:
+//  - HEDEF ile OLCUM ayri: "Ölçülen" = modulun son STAT'i (backend modul deposu, yasi
+//    gosterilir); "Hedef" = son KABUL EDILEN komut hedefi (backend). STAT hedefi ezmez.
+//  - Secim degisince yalniz o modulun deposu gosterilir; veri yoksa "—" / "Durum bilinmiyor".
+//  - Butun hareketler backend'in TEK yetki noktasindan gecer (testerMove/HomeBlockReason);
+//    her hareket onayla veya eylemi acikca soyleyen butonla baslar.
+//  - Hedef girisi uygulama ici sayisal tus takimi (NumPad); 10–590 mm (STL ile ayni marj).
 Item {
     id: page
     property var logModel
-    // Secili modulun SON OLCULEN durumu (backend modul deposu; kimlik + yas).
-    // moduleRevision her STAT/tick'te artar -> binding yeniden hesaplanir.
-    property var info: { app.moduleRevision; return app.moduleInfo(app.currentSlaveId) }
+    readonly property int sid: app.currentSlaveId
+    property var info: { app.moduleRevision; return app.moduleInfo(page.sid) }
 
-    // canli durum poll
-    Timer {
-        id: poll
-        interval: 1200; repeat: true; running: livesw.checked && app.connected
-        onTriggered: app.requestStatus(app.currentSlaveId)
+    function ageText(a) { return a < 0 ? "durum yok" : (a + " sn önce") }
+
+    NumPad {
+        id: pad
+        property int motor: 0
+        blockReason: app.testerMoveBlockReason
+        onAccepted: function(v) { app.moveMotor(page.sid, pad.motor, v) }
+    }
+
+    // Hareket baslatmadan once onay (fiziksel makine hareket edecek)
+    AppDialog {
+        id: confirm
+        property string action: ""
+        property int motor: 0
+        function ask(what, m) {
+            confirm.action = what
+            confirm.motor = m || 0
+            if (what === "all300")
+                show("9 motoru 300 mm'ye götür",
+                     "Modül " + page.sid + ": 9 motor 300 mm hedefine gidecek (kademeli, " +
+                     "~75 sn'ye kadar).\nBu arayüzden hareket durdurulamıyor.",
+                     "Götür", "Vazgeç", Theme.actionWarn)
+            else if (what === "homeModule")
+                show("Modül " + page.sid + Theme.dative(page.sid) + " referans al",
+                     "Modül " + page.sid + ": 9 motor geri çekilip referans alacak " +
+                     "(~150 sn'ye kadar).\nBu arayüzden hareket durdurulamıyor.",
+                     "Referans al", "Vazgeç", Theme.actionWarn)
+            else
+                show("Motor " + m + Theme.dative(m) + " referans al",
+                     "Modül " + page.sid + " / Motor " + m + " geri çekilip referans alacak." +
+                     "\nBu arayüzden hareket durdurulamıyor.",
+                     "Referans al", "Vazgeç", Theme.actionWarn)
+        }
+        onAccepted: {
+            if (action === "all300") app.allToValue(page.sid, 300)
+            else if (action === "homeModule") app.homeSlave(page.sid)
+            else app.homeMotor(page.sid, confirm.motor)
+        }
     }
 
     RowLayout {
@@ -24,9 +64,9 @@ Item {
 
         // ---------- SOL: 16 modul panosu ----------
         Rectangle {
-            Layout.preferredWidth: 380
-            Layout.minimumWidth: 380
-            Layout.maximumWidth: 380
+            Layout.preferredWidth: 404
+            Layout.minimumWidth: 404
+            Layout.maximumWidth: 404
             Layout.fillHeight: true
             radius: Theme.radius
             color: Theme.panel
@@ -34,14 +74,14 @@ Item {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 14
-                spacing: Theme.gapMin
-                Text { text: "Moduller"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
+                spacing: 12
+                Text { text: "Modüller"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
                 GridLayout {
                     id: modGrid
                     Layout.fillWidth: true
                     columns: 4
-                    rowSpacing: Theme.gapMin; columnSpacing: Theme.gapMin
-                    // karolar KARE: hucre genisligi = (grid - 3*bosluk)/4
+                    rowSpacing: 12; columnSpacing: 12
+                    // karolar KARE: hucre genisligi = (grid - 3*bosluk)/4  (>= 80 px)
                     readonly property real cellSize:
                         Math.max(Theme.touchMin, (width - 3 * columnSpacing) / 4)
                     Repeater {
@@ -52,35 +92,45 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: modGrid.cellSize
                             radius: Theme.radiusSm
-                            property int sid: index + 1
-                            property bool sel: app.currentSlaveId === sid
-                            property bool online: app.activeSlaves.indexOf(sid) >= 0
-                            // NORMAL durum notr kalir (yesil dekoratif kullanilmaz);
-                            // secim mavi cerceve, bagli olmayan sonuk.
+                            property int msid: index + 1
+                            property bool sel: page.sid === msid
+                            property var mi: { app.moduleRevision; return app.moduleInfo(msid) }
+                            readonly property string tag:
+                                !mi.known ? "yok"
+                                : mi.alarm ? "ALARM"
+                                : !mi.reachable ? "cevapsız"
+                                : mi.moving ? "hareket"
+                                : !mi.homed ? "ref. yok" : "bağlı"
+                            // NORMAL durum notr; secim mavi cerceve; alarm kirmizi cerceve.
                             color: cell.sel ? Qt.rgba(0.29,0.44,0.65,0.35) : Theme.panelHi
-                            opacity: cell.online || cell.sel ? 1.0 : 0.55
-                            border.width: cell.sel ? 3 : 1
-                            border.color: cell.sel ? Theme.selection : Theme.border
+                            opacity: mi.known || cell.sel ? 1.0 : 0.55
+                            border.width: cell.sel || mi.alarm ? 3 : 1
+                            border.color: mi.alarm ? Theme.alarm
+                                        : cell.sel ? Theme.selection : Theme.border
                             Column {
                                 anchors.centerIn: parent
                                 spacing: 2
-                                Text { text: cell.sid; color: Theme.text; font.bold: true
+                                Text { text: cell.msid; color: Theme.text; font.bold: true
                                     font.pixelSize: Theme.fsTitle; font.family: Theme.fontMono
                                     anchors.horizontalCenter: parent.horizontalCenter }
-                                Text { text: cell.online ? "bagli" : "yok"
-                                    color: Theme.textDim; font.pixelSize: Theme.fsSmall
+                                Text { text: cell.tag
+                                    color: cell.tag === "ALARM" ? Theme.alarm : Theme.textDim
+                                    font.bold: cell.tag === "ALARM"
+                                    font.pixelSize: Theme.fsSmall
                                     anchors.horizontalCenter: parent.horizontalCenter }
                             }
-                            TapHandler { onTapped: app.currentSlaveId = cell.sid }
+                            TapHandler { onTapped: app.currentSlaveId = cell.msid }
                         }
                     }
                 }
 
-                RowLayout {
+                TouchButton {
                     Layout.fillWidth: true
-                    Text { text: "Canli Durum"; color: Theme.textDim; font.pixelSize: Theme.fsBody }
-                    Item { Layout.fillWidth: true }
-                    Switch { id: livesw }
+                    text: "Seçili modülün durumunu sorgula"
+                    color: Theme.actionNeutral
+                    enabled: app.connected
+                    disabledReason: "bağlantı yok"
+                    onClicked: app.requestStatus(page.sid)
                 }
 
                 Rectangle {
@@ -88,11 +138,20 @@ Item {
                     Layout.fillHeight: true
                     radius: Theme.radiusSm
                     color: Theme.panelHi
+                    clip: true
                     Column {
                         anchors.fill: parent; anchors.margins: 10; spacing: 4
-                        Text { text: "Klavuz"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
-                        Text { text: "• Soldan modul sec\n• Motor kutusuna deger yaz + Enter\n• 'Canli Durum' surekli izler\n• Terminalden ham komut girilebilir"
-                            color: Theme.textDim; font.pixelSize: Theme.fsSmall; lineHeight: 1.3 }
+                        Text { text: "Kılavuz"; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsBody }
+                        Text {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "• Soldan modül seçin.\n" +
+                                  "• Ölçülen = son durum sorgusu (yaşı üstte); Hedef = son kabul edilen komut.\n" +
+                                  "• Hedef gir → tuş takımı → motor götürülür (" +
+                                  app.safeMinMm + "–" + app.safeMaxMm + " mm).\n" +
+                                  "• Makine sürekli izlenir; düğme yalnız seçili modülü hemen sorgular."
+                            color: Theme.textDim; font.pixelSize: Theme.fsSmall; lineHeight: 1.2
+                        }
                     }
                 }
             }
@@ -107,7 +166,6 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.minimumHeight: 430
                 radius: Theme.radius
                 color: Theme.panel
                 border.color: Theme.border
@@ -115,44 +173,61 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 14
-                    spacing: Theme.gapMin
-                    // referans uyarisi (Tester'da engelleme yok, yalniz uyari)
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 36
-                        radius: Theme.radiusSm
-                        // ANORMAL / on-kosul eksik -> AMBER (kirmizi yalniz gercek ariza)
-                        color: Theme.warn
-                        visible: app.connected && !app.allHomed
-                        Text {
-                            anchors.centerIn: parent
-                            text: "⚠  REFERANS ALINMADI - pozisyonlar guvenilir degil, once Home yapin"
-                            color: "#101214"; font.bold: true; font.pixelSize: Theme.fsBody
-                        }
-                    }
+                    spacing: 10
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gapMin
-                        Text { text: "Modul " + app.currentSlaveId; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
+                        Column {
+                            spacing: 2
+                            Text { text: "Modül " + page.sid; color: Theme.text; font.bold: true; font.pixelSize: Theme.fsTitle }
+                            Text {
+                                text: "Son ölçüm: " + page.ageText(page.info.ageS) +
+                                      (page.info.known && page.info.stale ? " — güncel değil" : "") +
+                                      "   ·   Referans: " +
+                                      (page.info.homed ? "alındı (firmware bildirimi)" : "alınmadı")
+                                color: page.info.known && page.info.stale ? Theme.warn : Theme.textDim
+                                font.pixelSize: Theme.fsSmall
+                            }
+                        }
                         Item { Layout.fillWidth: true }
                         TouchButton {
-                            text: "Test 300 mm"; color: Theme.actionNeutral
+                            text: "9 motoru 300 mm'ye götür"; color: Theme.actionWarn
                             enabled: app.testerMoveBlockReason === ""
-                            onClicked: app.allToValue(app.currentSlaveId, 300)
+                            disabledReason: app.testerMoveBlockReason
+                            Layout.maximumWidth: 360
+                            onClicked: confirm.ask("all300")
                         }
                         TouchButton {
-                            text: "Home Hepsi"; color: Theme.actionWarn
+                            text: "Modül " + page.sid + Theme.dative(page.sid) + " referans al"
+                            color: Theme.actionWarn
                             enabled: app.testerHomeBlockReason === ""
-                            onClicked: app.homeSlave(app.currentSlaveId)
+                            disabledReason: app.testerHomeBlockReason
+                            Layout.maximumWidth: 360
+                            onClicked: confirm.ask("homeModule")
                         }
+                    }
+
+                    // neden kapali? (tam metin; buton altindaki satir kisaltilmis olabilir)
+                    Text {
+                        Layout.fillWidth: true
+                        visible: app.testerMoveBlockReason.length > 0 || app.testerHomeBlockReason.length > 0
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        color: Theme.warn
+                        font.pixelSize: Theme.fsSmall
+                        text: (app.testerMoveBlockReason.length ? "Hareket kapalı: " + app.testerMoveBlockReason : "") +
+                              (app.testerHomeBlockReason.length && app.testerHomeBlockReason !== app.testerMoveBlockReason
+                               ? (app.testerMoveBlockReason.length ? "   ·   " : "") +
+                                 "Referans alma kapalı: " + app.testerHomeBlockReason : "")
                     }
 
                     GridLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         columns: 3
-                        rowSpacing: Theme.gapMin; columnSpacing: Theme.gapMin
+                        rowSpacing: 12; columnSpacing: 12
                         Repeater {
                             model: 9
                             delegate: Rectangle {
@@ -169,13 +244,13 @@ Item {
 
                                 ColumnLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 10
-                                    spacing: 6
+                                    anchors.margins: 8
+                                    spacing: 4
 
                                     // baslik + durum cipi (renk + METIN birlikte - WCAG 1.4.1)
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: "MOTOR " + (index + 1); color: Theme.text
+                                        Text { text: "MOTOR " + (mcell.index + 1); color: Theme.text
                                             font.pixelSize: Theme.fsBody; font.bold: true }
                                         Item { Layout.fillWidth: true }
                                         Rectangle {
@@ -188,57 +263,58 @@ Item {
                                             border.width: (mcell.st === "F" || mcell.st === "H") ? 0 : 1
                                             Text { id: stLbl; anchors.centerIn: parent
                                                 text: (mcell.st === "F" ? "⚠ " : "") + Theme.stateLabel(mcell.st)
-                                                color: (mcell.st === "F" || mcell.st === "H") ? "#101214" : Theme.textDim
+                                                color: (mcell.st === "F" || mcell.st === "H") ? "#101214"
+                                                     : mcell.st === "" ? Theme.textFaint : Theme.textDim
                                                 font.bold: true; font.pixelSize: Theme.fsSmall }
                                         }
                                     }
 
-                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
+                                    Item { Layout.fillHeight: true }
 
-                                    // Hedef mm girisi + Home YAN YANA (dikey alan kazanci).
-                                    // Deger yaz + Enter -> MOV. +/- stepper sadece ayarlar, gondermez.
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: Theme.gapMin
-                                        SpinBox {
-                                            id: sp
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: Theme.touchDense
-                                            from: 0; to: 600; stepSize: 10; editable: true
-                                            value: 0
-                                            font.pixelSize: Theme.fsButton
-                                            contentItem: TextInput {
-                                                text: sp.displayText
-                                                color: Theme.text
-                                                font.pixelSize: Theme.fsValue
-                                                font.bold: true
-                                                font.family: Theme.fontMono
-                                                horizontalAlignment: Qt.AlignHCenter
-                                                verticalAlignment: Qt.AlignVCenter
-                                                readOnly: !sp.editable
-                                                validator: sp.validator
-                                                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                                selectByMouse: true
-                                                onAccepted: {
-                                                    sp.value = sp.valueFromText(text, sp.locale)
-                                                    app.moveMotor(app.currentSlaveId, index + 1, sp.value)
-                                                }
+                                        spacing: 10
+                                        Column {
+                                            Layout.preferredWidth: 110
+                                            Text { text: "Ölçülen"; color: Theme.textFaint; font.pixelSize: Theme.fsSmall }
+                                            Text {
+                                                text: mcell.mi.known ? (mcell.mi.mm + " mm") : "—"
+                                                color: Theme.text; font.bold: true
+                                                font.pixelSize: Theme.fsTitle; font.family: Theme.fontMono
+                                            }
+                                        }
+                                        Column {
+                                            Layout.preferredWidth: 110
+                                            Text { text: "Hedef"; color: Theme.textFaint; font.pixelSize: Theme.fsSmall }
+                                            Text {
+                                                text: mcell.mi.target >= 0 ? (mcell.mi.target + " mm") : "—"
+                                                color: Theme.textDim; font.bold: true
+                                                font.pixelSize: Theme.fsTitle; font.family: Theme.fontMono
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        TouchButton {
+                                            text: "Hedef gir"
+                                            dense: true
+                                            color: Theme.actionNeutral
+                                            enabled: app.testerMoveBlockReason === ""
+                                            onClicked: {
+                                                pad.motor = mcell.index + 1
+                                                pad.open("Modül " + page.sid + " / Motor " + (mcell.index + 1) + " hedefi",
+                                                         "Ölçülen: " + (mcell.mi.known ? mcell.mi.mm + " mm" : "bilinmiyor") +
+                                                         " (" + page.ageText(page.info.ageS) + ")",
+                                                         "Motor " + (mcell.index + 1) + Theme.accusative(mcell.index + 1))
                                             }
                                         }
                                         TouchButton {
-                                            text: "Home"
+                                            text: "Ref."
                                             dense: true
                                             color: Theme.actionWarn
                                             enabled: app.testerHomeBlockReason === ""
-                                            onClicked: app.homeMotor(app.currentSlaveId, index + 1)
+                                            onClicked: confirm.ask("homeMotor", mcell.index + 1)
                                         }
                                     }
-
-                                    Text { text: "mm  ·  deger yaz + Enter"
-                                        color: Theme.textFaint; font.pixelSize: Theme.fsSmall
-                                        Layout.alignment: Qt.AlignHCenter }
-
-                                    Item { Layout.fillHeight: true; Layout.fillWidth: true }
+                                    Item { Layout.fillHeight: true }
                                 }
                             }
                         }
@@ -248,7 +324,8 @@ Item {
 
             Terminal {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 140
+                Layout.preferredHeight: 236
+                dense: true
                 logModel: page.logModel
             }
         }

@@ -139,3 +139,36 @@ function clock(sec) {
     var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
     return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
 }
+
+// ---------- Turkce sayi ekleri (operator metni: "Modül 3'e", "Motor 6'yı") ----------
+// Sayinin okunusundaki son kelimenin son unlusune gore (unlu uyumu + kaynastirma y).
+var _numWord = ["", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz"];
+var _tenWord = ["", "on", "yirmi", "otuz", "kırk", "elli", "altmış", "yetmiş", "seksen", "doksan"];
+function _lastWord(n) {
+    n = Math.abs(parseInt(n));
+    if (isNaN(n)) return "";
+    if (n === 0) return "sıfır";
+    if (n % 1000 === 0) return "bin";
+    if (n % 100 === 0) return "yüz";
+    if (n % 10 !== 0) return _numWord[n % 10];
+    return _tenWord[Math.floor(n / 10) % 10];
+}
+function _lastVowel(w) {
+    for (var i = w.length - 1; i >= 0; i--)
+        if ("aeıioöuü".indexOf(w[i]) >= 0) return w[i];
+    return "e";
+}
+function _endsVowel(w) { return w.length > 0 && "aeıioöuü".indexOf(w[w.length - 1]) >= 0; }
+// yonelme hali: 3 -> "'e", 6 -> "'ya", 9 -> "'a", 2 -> "'ye"
+function dative(n) {
+    var w = _lastWord(n), v = _lastVowel(w);
+    var e = ("eiöü".indexOf(v) >= 0) ? "e" : "a";
+    return "'" + (_endsVowel(w) ? "y" : "") + e;
+}
+// belirtme hali: 3 -> "'ü", 6 -> "'yı", 9 -> "'u", 2 -> "'yi"
+function accusative(n) {
+    var w = _lastWord(n), v = _lastVowel(w);
+    var e = ("aı".indexOf(v) >= 0) ? "ı" : ("ei".indexOf(v) >= 0) ? "i"
+          : ("ou".indexOf(v) >= 0) ? "u" : "ü";
+    return "'" + (_endsVowel(w) ? "y" : "") + e;
+}

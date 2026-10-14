@@ -58,7 +58,8 @@ Item {
     Text {
         anchors.centerIn: parent
         visible: app.gridData.length === 0
-        text: "STL yukleyip 'Hesapla' deyince\nkalip yuzeyi burada gorunur"
+        text: app.modelState === "loading" ? "Model hesaplanıyor…"
+            : "STL Seç ile dosya seçin.\nHesaplama tamamlanınca önizleme burada görünür."
         color: Theme.textDim; font.pixelSize: Theme.fsBody
         horizontalAlignment: Text.AlignHCenter
     }
@@ -68,7 +69,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 6
         visible: app.gridData.length > 0
-        text: "Surukle: dondur · Iki parmak: yakinlas"
+        text: "Sürükle: döndür · İki parmak: yakınlaş"
         color: Theme.textDim; font.pixelSize: Theme.fsSmall
     }
 }

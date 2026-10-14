@@ -94,7 +94,7 @@ ApplicationWindow {
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         anchors.bottomMargin: 16
-        height: 230
+        height: implicitHeight
     }
 
     // ---- alarm / uyari listesi ----

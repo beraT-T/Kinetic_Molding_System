@@ -13,6 +13,7 @@ Item {
     // durgunlugu dogrulanmamisken gorunur (Bakim hareketleri dahil).
     visible: app.busy || app.motionActive
     z: 1500
+    implicitHeight: col.implicitHeight + 28     // icerik kadar (Bakim terminalini az ortsun)
 
     property string phase: ""
     property int done: 0
@@ -36,6 +37,7 @@ Item {
         radius: Theme.radius
 
         ColumnLayout {
+            id: col
             anchors.fill: parent
             anchors.margins: 14
             spacing: 10

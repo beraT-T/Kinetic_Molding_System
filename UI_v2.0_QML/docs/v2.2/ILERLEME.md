@@ -8,7 +8,7 @@ _(gece sonunda doldurulacak — biçim: GOREV.md bölüm E)_
 
 ## Durum
 - Branch: `ui_v2.2` (ui_v2.0 @ 0733c9c'den açıldı)
-- Aktif faz: Faz 3
+- Aktif faz: Faz 4
 - Son commit: (Faz 0 commit'i)
 
 ## Başlangıç çalışma ağacı (dokunulmayacak)
@@ -110,6 +110,20 @@ Formül: tipik = N×1 sn + 0,1 sn; en kötü = N×max(1 sn, 2,5 sn STAT zaman a�
 + 2,5 sn. Ek gecikmeler: hareket dağıtımı sırasında poll durur (modül başına ACK, normalde ~0,1 sn,
 U2 yavaşsa ~1,6 sn, en çok 2,5 sn); terminal/Bakım sorgusu başına ≤2,8 sn. Simülasyonda ölçülen
 (16 modül, biri U2-yavaş, test `AlarmLatencyTest`): **10,8 sn**. Gerçek RS485 hattında ölçülmedi.
+
+- 06:20 — Faz 3 — 3a: atomik model (Faz 1'de backend) + MainPage model durumu (Hesaplanıyor /
+  Yüklenemedi / ad), hata kalıcı satırda. 3b: `modelInfo` (doldurulan / kırpılan hücre, en büyük
+  komşu farkı — yalnız rapor, K14) STL panelinde. 3c: backend modül deposuna **son kabul edilen
+  komut hedefi** (`targets`, ACK OK'te yazılır; ERR/zaman aşımında "—"; STAT ezmez);
+  `moduleInfo().motors[].target`. Bakım ekranı yeniden tasarlandı: "Ölçülen" / "Hedef" ayrı,
+  "Son ölçüm N sn önce", modül karolarında durum etiketi (yok/cevapsız/ALARM/hareket/ref. yok),
+  "Canlı Durum" anahtarı yerine "Seçili modülün durumunu sorgula" (gözetim zaten sürekli),
+  yeni `NumPad.qml` (uygulama içi sayısal tuş takımı, K13 — Faz 4c maddesi burada yapıldı),
+  "9 motoru 300 mm'ye götür" / "Modül X'e referans al" / "Motor X'e referans al" onaylı,
+  terminal "HABERLEŞME GÜNLÜĞÜ" + "Günlüğü temizle" + 1080p'de kesilmiyor. Harita/3D başlığı
+  "Model hedefleri — ölçülen konum değildir". Onay pencerelerinde model adı, modül listesi, motor
+  sayısı, beklenen liste (Faz 4b maddesi). `Theme.dative/accusative` (Modül 3'e, Motor 6'yı).
+  BusyOverlay içerik yüksekliğinde. `tests/test_model.py` (12). **93 test OK.**
 
 ## ENGELLENDİ / STASH
 <!-- ENGELLENDİ: <komut> — <sebep>  |  STASH: v22-wip-<konu> — <dosyalar> — <neden> -->
