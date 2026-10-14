@@ -1,0 +1,14 @@
+UI v2.2 turunu GECE MODUNDA, gözetimsiz yapacaksın. Ben uyuyorum: soru soramazsın, onay alamazsın, kimse izin vermeyecek.
+
+Önce sırayla oku:
+1. UI_v2.0_QML/docs/v2.2/GOREV.md — görev ve GECE MODU KURALLARI. Bu kurallar CLAUDE.md'deki "önce planı göster / onay bekle / plan modu" kuralının yerine geçer; bu çalıştırma için önceden izin veriyorum.
+2. UI_v2.0_QML/docs/v2.2/INCELEME.md — bağımsız inceleme raporu (kanıtlar, satır referansları). Hiçbir maddesini atlama.
+3. UI_v2.0_QML/docs/v2.2/KARARLAR.md — her karar için varsayılan değer.
+4. UI_v2.0_QML/docs/v2.2/ILERLEME.md — ilerleme ve devam noktası.
+5. CLAUDE.md
+
+Sonra GOREV.md'deki fazları sırayla uygula. Fazlar arasında durma, rapor vermek için turu bitirme, soru sorma. Karar gerekirse KARARLAR.md'deki varsayılanı kullan; yoksa en muhafazakâr seçeneği seç ve KARARLAR.md'ye ONAY BEKLİYOR diye ekle.
+
+Bir işlem engellenirse TEKRAR DENEME: ILERLEME.md'ye "ENGELLENDİ" diye yaz ve bağımsız bir sonraki işe geç. Push, SSH, paket kurulumu, PlatformIO, seri port, git add -A yok.
+
+ILERLEME.md'yi sık güncelle ve commit'le. Bağlam sıkıştırılırsa önce ILERLEME.md'yi oku ve kaldığın yerden devam et. Bitince ILERLEME.md'nin en üstüne SABAH ÖZETİ'ni yaz.
