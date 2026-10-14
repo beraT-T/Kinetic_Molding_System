@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal, Slot, Property, QUrl, QTimer
 
 from serial_manager import SerialManager
 from stl_interpolator import interpolate_stl_to_grid, grid_stats
+from timers import QtTimerService
 
 
 def slave_grid_origin(slave_id):
@@ -27,6 +28,26 @@ OP_POLL_MS      = 1000     # STAT poll araligi (tick basina 1 modul)
 OP_STAGGER_MS   = 80       # modul modul komut gonderim araligi (UI bloklamaz)
 OP_TIMEOUT_S    = 300.0    # home ~200s, hareket ~150s -> pay birakildi
 DEMO_MOVE_S     = 6.0      # demo modda sahte hareket suresi
+
+
+class _RepeatTimer:
+    """Tekrarlayan zamanlayici (enjekte edilen timer servisi uzerinde)."""
+    def __init__(self, ts, ms, fn):
+        self._ts, self._ms, self._fn = ts, ms, fn
+        self._h = None
+
+    def start(self):
+        self.stop()
+        self._h = self._ts.call_later(self._ms, self._tick)
+
+    def stop(self):
+        if self._h is not None:
+            self._h.cancel()
+            self._h = None
+
+    def _tick(self):
+        self._h = self._ts.call_later(self._ms, self._tick)
+        self._fn()
 
 
 class Controller(QObject):
@@ -49,9 +70,16 @@ class Controller(QObject):
     operationFinished = Signal(bool, str, str)        # ok, baslik, mesaj
     _lineSig          = Signal(str)                   # serial thread -> main thread kopru
 
-    def __init__(self, demo=False):
+    def __init__(self, demo=False, transport=None, timers=None):
         super().__init__()
-        self._serial = SerialManager(on_line=lambda l: self._lineSig.emit(l))
+        # Enjeksiyon (testler): transport = sahte seri kopru, timers = sahte saat.
+        # Verilmezse gercek SerialManager + QTimer (varsayilan davranis ayni).
+        self._ts = timers if timers is not None else QtTimerService()
+        if transport is None:
+            self._serial = SerialManager(on_line=lambda l: self._lineSig.emit(l))
+        else:
+            self._serial = transport
+            self._serial.on_line = lambda l: self._lineSig.emit(l)
         self._lineSig.connect(self._handle_line)      # queued: ana thread'de calisir
 
         self._connected = False
@@ -67,9 +95,7 @@ class Controller(QObject):
         # --- islem (op) durum makinesi ---
         self._homed = set()        # bu oturumda referans alinmis modul id'leri
         self._op = None            # aktif islem sozlugu (asagida _start_op)
-        self._op_timer = QTimer(self)
-        self._op_timer.setInterval(OP_POLL_MS)
-        self._op_timer.timeout.connect(self._poll_op)
+        self._op_timer = _RepeatTimer(self._ts, OP_POLL_MS, self._poll_op)
         self._demo_done_at = {}    # demo: sid -> sahte hareketin bitecegi zaman
         self._demo_letter = {}     # demo: sid -> hareket sirasindaki durum harfi
         self._fault_text = ""      # durum seridinde gosterilen son ariza
@@ -307,7 +333,7 @@ class Controller(QObject):
         op["step"] += 1
         op["label"] = "Referans aliniyor" if phase == "home" else "Sekil uygulaniyor"
         op["pending"] = set(op["targets"])
-        op["t0"] = time.time()
+        op["t0"] = self._ts.now()
         op["poll_i"] = 0
         op["mstate"] = {}
         op["dispatching"] = True     # komutlar giderken poll yapma (hat cakismasin)
@@ -332,14 +358,14 @@ class Controller(QObject):
             vals = self._slave_values(sid)
             self._send(f"ARR:{sid:02d}:" + ":".join(str(v) for v in vals))
             self._demo_begin(sid, "M", vals)
-        QTimer.singleShot(OP_STAGGER_MS, lambda: self._dispatch(phase, targets, i + 1))
+        self._ts.call_later(OP_STAGGER_MS, lambda: self._dispatch(phase, targets, i + 1))
 
     def _poll_op(self):
         op = self._op
         if not op:
             self._op_timer.stop()
             return
-        if time.time() - op["t0"] > OP_TIMEOUT_S:
+        if self._ts.now() - op["t0"] > OP_TIMEOUT_S:
             kalan = ", ".join(str(s) for s in sorted(op["pending"]))
             self._finish_op(False, "Zaman asimi",
                             f"{op['label']} tamamlanmadi. Yanit vermeyen modul: {kalan}")
@@ -404,7 +430,7 @@ class Controller(QObject):
             else:
                 letters = op["mstate"].get(sid, [])
                 done += sum(1 for l in letters if l == "S")
-        elapsed = int(time.time() - op["t0"]) if op["t0"] else 0
+        elapsed = int(self._ts.now() - op["t0"]) if op["t0"] else 0
         # kalan sure tahmini: yeterli ilerleme olusunca (NN/g: >1 dk islemde goster)
         remaining = -1
         if done > 0 and elapsed > 3:
@@ -463,13 +489,13 @@ class Controller(QObject):
         if not self._demo:
             return
         self._demo_letter[slave_id] = letter
-        self._demo_done_at[slave_id] = time.time() + DEMO_MOVE_S
+        self._demo_done_at[slave_id] = self._ts.now() + DEMO_MOVE_S
 
     @Slot(int)
     def requestStatus(self, slave_id):
         if self._demo:
             vals = self._demo_targets.get(slave_id, [0] * 9)
-            if time.time() < self._demo_done_at.get(slave_id, 0.0):
+            if self._ts.now() < self._demo_done_at.get(slave_id, 0.0):
                 letter = self._demo_letter.get(slave_id, "M")
             else:
                 letter = "S"
