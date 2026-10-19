@@ -67,6 +67,7 @@ Rectangle {
 
         // ONAY: kaydi SILMEZ (ISA-18.2: onay != normale donus)
         Rectangle {
+            objectName: "stripAck"
             visible: app.unackedAlarms > 0
             Layout.preferredHeight: Theme.touchMin
             implicitWidth: ackTxt.implicitWidth + 40

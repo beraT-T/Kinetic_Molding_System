@@ -64,6 +64,7 @@ Rectangle {
             }
         }
         TouchButton {
+            objectName: "btnScan"
             text: "Modülleri bul"
             color: Theme.actionPrimary
             enabled: app.scanBlockReason === ""

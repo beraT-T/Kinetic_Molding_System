@@ -87,12 +87,14 @@ Item {
                 spacing: Theme.gapMin
                 Item { Layout.fillWidth: true }
                 TouchButton {
+                    objectName: root.objectName + "_reject"
                     text: root.rejectText
                     color: Theme.panelHi
                     visible: root.rejectText.length > 0
                     onClicked: { root.visible = false; root.rejected() }
                 }
                 TouchButton {
+                    objectName: root.objectName + "_accept"
                     text: root.acceptText
                     color: root.accentColor
                     onClicked: { root.visible = false; root.accepted() }

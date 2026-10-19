@@ -66,6 +66,7 @@ ApplicationWindow {
                 Repeater {
                     model: ["STL Kontrol", "Bakım / Motor testi"]
                     delegate: Button {
+                        objectName: "tab_" + index
                         text: modelData
                         checkable: true
                         checked: tabStack.currentIndex === index
@@ -97,8 +98,8 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: 0
-            MainPage   { logModel: logModel }
-            TesterPage { logModel: logModel }
+            MainPage   { objectName: "mainPage"; logModel: logModel }
+            TesterPage { objectName: "testerPage"; logModel: logModel }
         }
 
     }
@@ -120,18 +121,60 @@ ApplicationWindow {
     AlarmPanel { id: alarmPanel; objectName: "alarmPanel" }
 
     // ---- bilgi/hata penceresi (islem sonucu) ----
-    AppDialog { id: infoDialog }
+    // Tek pencere + kisa KUYRUK: ayni mesaj tekrar gelirse yeniden acilmaz (pencere
+    // yagmuru yok); acik ARIZA penceresi sonraki siradan bir mesajla EZILMEZ; ariza
+    // mesaji siradakilerin onune gecer. Kuyruk sinirli (en eski ariza-disi mesaj atilir).
+    AppDialog {
+        id: infoDialog
+        objectName: "infoDialog"
+        property var current: null
+        onAccepted: win.showNextResult()
+    }
+    property var pendingResults: []
+
+    function _sameResult(a, b) { return a && b && a.title === b.title && a.message === b.message }
+    function _showResult(r) {
+        infoDialog.current = r
+        infoDialog.show(r.title, r.message, "Kapat", "", r.color)
+    }
+    function showNextResult() {
+        infoDialog.current = null
+        if (win.pendingResults.length > 0) {
+            var q = win.pendingResults.slice()
+            var r = q.shift()
+            win.pendingResults = q
+            win._showResult(r)
+        }
+    }
+    function postResult(ok, title, message) {
+        // "Kapat": pencere yalniz kapanir (islemi etkilemez). Basari rengi NOTR
+        // (yesil yalniz BASLA aktuatorunde); ariza kirmizi; diger red/uyari amber.
+        var r = { "title": title, "message": message, "fault": title === "ARIZA",
+                  "color": ok ? Theme.actionPrimary
+                              : (title === "ARIZA" ? Theme.alarm : Theme.warn) }
+        if (!infoDialog.visible) { win._showResult(r); return }
+        if (win._sameResult(infoDialog.current, r)) return
+        var q = win.pendingResults.slice()
+        for (var i = 0; i < q.length; i++) if (win._sameResult(q[i], r)) return
+        if (r.fault && !(infoDialog.current && infoDialog.current.fault)) {
+            if (infoDialog.current) q.unshift(infoDialog.current)
+            win.pendingResults = q.slice(0, 6)
+            win._showResult(r)
+            return
+        }
+        if (r.fault) q.unshift(r); else q.push(r)
+        while (q.length > 6) {
+            var drop = -1
+            for (var j = q.length - 1; j >= 0; j--) if (!q[j].fault) { drop = j; break }
+            q.splice(drop >= 0 ? drop : q.length - 1, 1)
+        }
+        win.pendingResults = q
+    }
 
     // Islem bitince sonucu goster (basarili / ariza / zaman asimi)
     // NOT: referans uyarisi baglantida DEGIL, BASLA'ya basinca cikar (MainPage).
     Connections {
         target: app
-        function onOperationFinished(ok, title, message) {
-            // "Kapat": pencere yalniz kapanir (islemi etkilemez). Basari rengi NOTR
-            // (yesil yalniz BASLA aktuatorunde); ariza kirmizi; diger red/uyari amber.
-            infoDialog.show(title, message, "Kapat", "",
-                            ok ? Theme.actionPrimary
-                               : (title === "ARIZA" ? Theme.alarm : Theme.warn))
-        }
+        function onOperationFinished(ok, title, message) { win.postResult(ok, title, message) }
     }
 }
