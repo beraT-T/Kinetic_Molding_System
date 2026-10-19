@@ -38,10 +38,14 @@ def start(app, engine, controller, root, outdir):
     pad = root.findChild(QObject, "numPad")
 
     def show_pad():
+        pad.setProperty("sid", 1)
         pad.setProperty("motor", 3)
-        pad.setProperty("title", "Modül 1 / Motor 3 hedefi")
-        pad.setProperty("info", "Ölçülen: 0 mm (1 sn önce)")
+        pad.setProperty("session", c.sessionId)
+        pad.setProperty("title", "Modül 1 / Motor 3")
+        pad.setProperty("info", "Konum: 0 mm (ölçülen, 1 sn önce)\nSon kabul edilen hedef: —"
+                                "   ·   Durum: Boşta")
         pad.setProperty("actionPrefix", "Motor 3'ü")
+        pad.setProperty("homeText", "Motor 3'e referans al")
         pad.setProperty("entry", "250")
         pad.setProperty("visible", True)
 
@@ -52,7 +56,7 @@ def start(app, engine, controller, root, outdir):
               (500, shot("03_harita_modul_ayrintisi")),
               (100, lambda: detail.setProperty("visible", False))]
     steps += [(100, tab(1)), (800, shot("04_bakim_motor_testi"))]
-    steps += [(100, show_pad), (500, shot("05_sayisal_tus_takimi")),
+    steps += [(100, show_pad), (500, shot("05_motor_paneli")),
               (100, lambda: pad.setProperty("visible", False))]
     steps += [(100, tab(0)), (100, c.startProduction), (6000, shot("06_islem_suruyor"))]
     steps += [(100, lambda: c._transport.fail_motor(2, 5)), (6000, shot("07_ariza_sonuc"))]

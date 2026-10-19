@@ -36,8 +36,15 @@ HMI metni: **"Bu arayüzden hareket durdurulamıyor."**
 
 **Bugün:** cevaplar yalnız fiil + modül (+ motor) taşır. Zaman aşımına uğramış bir isteğin geç
 cevabı bir sonraki aynı istekle eşleşebilir (v2.2 testi:
-`test_link.test_residual_risk_late_reply_matches_next_same_request`). v2.2 azaltması: zaman
-aşımı sonrası modül "senkron dışı", ardışık 2 tutarlı taze STAT istenir (K11).
+`test_link.test_residual_risk_late_reply_matches_next_same_request`).
+
+**v2.2 azaltması (2026-10-19 düzeltme turunda UYGULANDI, arayüz tarafı):** zaman aşımı, yazma
+hatası/takılması veya istenmemiş cevaptan sonra o modülün "cevap sırası belirsiz" sayılır; gözetim
+STAT yerine `PING` gönderir, `PONG`'dan **sonra** istenen STAT veri olarak kullanılır (ondan önceki
+cevaplar yalnız arıza alarmı üretebilir). Dayanak: firmware komutları sırayla işler ve cevaptan
+sonra RS485 girişini boşaltır (`RS485_RX_Mode`), köprü sırayı korur — **kaynaktan okundu, donanımda
+ölçülmedi.** Bu bir çıkarımdır, kanıt değildir: iki ardışık benzer cevap tazeliğin kesin kanıtı
+sayılmaz (K11, `GUVENLIK_ACIK_KONULAR.md` §5). Kesin çözüm aşağıdaki istek kimliğidir.
 
 **Öneri:** isteğe isteğe bağlı sıra numarası: `STAT:01#1234`, `ARR:01:…#1235`.
 Cevap aynı numarayı yankılar: `STAT:01#1234:S300,…`, `ARROK:01#1235`. Numarasız istek eski
@@ -67,10 +74,23 @@ içinde onaylamasa bile **kendi yerel motorlarını yine zamanlar**, sonra `*ERR
 `ALLERR/ARRERR/HOMEERR` "hiç hareket başlamadı" demek değildir. v2.2 bunu "belirsiz, izlemeye
 devam" diye işler (SYNC uyarısı, hareket kilitli, kalan modüllere komut yok).
 
-**Öneri (iki seçenek, donanım ekibi seçmeli):**
-- (a) **Hep ya da hiç:** U2 onaylamazsa U3 yerel motorları zamanlamaz, `ARRERR:id:U2` döner.
-  Tek parça membranda yarım modül hareketini önler.
-- (b) Mevcut davranış korunur ama cevap ne olduğunu söyler: `ARRPART:id:U3` (U3 motorları
+**Uygulanmış davranış (arayüz v2.2; firmware DEĞİŞMEDİ):** `*ERR`, ACK zaman aşımı, yazma
+hatası/takılması = "kabul belirsiz": işlem biter, kalan modüllere komut gönderilmez, modül "senkron
+dışı" (SYNC), izleme sürer, komut **otomatik tekrar edilmez**. Arayüz yarım modül hareketini
+**önlemez**; yalnız görünür kılar ve sonraki hareketi kilitler.
+
+**Öneriler (donanım/firmware ekibi seçmeli; hiçbiri atomiklik garantisi vermez):**
+- (a) **U2 onayı gelmeden U3 yerel motorları başlatmaz**, `ARRERR:id:U2` döner. Bu, "U2 komutu hiç
+  almadı" durumunda yarım hareketi önler; ama **hep ya da hiç DEĞİLDİR**: U2 komutu almış ve kendi
+  motorlarını zamanlamış, yalnız `INTERNAL_*OK` onayı USART2'de kaybolmuş/gecikmiş olabilir → U2
+  motorları hareket eder, U3 motorları etmez; yarım modül hareketi yine mümkündür. (Önceki sürümde
+  bu seçenek yanlışlıkla "hep ya da hiç" diye anlatılmıştı.)
+- (b) Atomikliğe **yaklaşmak** için iki aşamalı protokol: U3 → U2 `PREPARE` (hedefler) + onay →
+  U3 her iki tarafa `GO`; U2 belirli süre `GO` almazsa hazırlığı düşürür. Bu da `GO` kaybı ve
+  zamanlaması için kendi belirsizliğini taşır (U3 `GO` gönderdi, U2 almadı → yine yarım hareket);
+  bu yüzden her durumda U3, U2'nin gerçek durumunu `STAT`'ta (yaşıyla) raporlamalı, host da
+  sonucu yalnız `STAT` ile değerlendirmelidir.
+- (c) Mevcut davranış korunur ama cevap ne olduğunu söyler: `ARRPART:id:U3` (U3 motorları
   zamanlandı, U2 belirsiz).
 - `ARRERR:FMT` gibi id'siz cevaplar `ARRERR:id:FMT` biçimine getirilmeli.
 
@@ -99,5 +119,7 @@ devam" diye işler (SYNC uyarısı, hareket kilitli, kalan modüllere komut yok)
    istesin. v2.2 yalnız en büyük komşu farkını raporlar.
 3. **Alarm geçmişi kalıcılığı:** alarm kayıtları uygulama yeniden başlayınca kaybolur (bellek
    içi). Dosyaya (ör. `~/kalip_alarm.log`) satır satır yazılması önerilir.
-4. **Gözetim önceliği:** işlem modüllerinin daha sık sorgulanması (round-robin ağırlığı); şu an
-   bütün bilinen modüller eşit (en kötü gecikme hesabı bu eşitliğe dayanır).
+4. **Gözetim önceliği:** 2026-10-19'da gözetimin **diğer trafiğe** önceliği uygulandı (kuyruğun
+   önü, operatör sorgu sınırı — K34). Hâlâ öneri: işlem modüllerinin daha sık sorgulanması
+   (round-robin ağırlığı); şu an bütün bilinen modüller eşit (en kötü gecikme hesabı bu eşitliğe
+   dayanır).

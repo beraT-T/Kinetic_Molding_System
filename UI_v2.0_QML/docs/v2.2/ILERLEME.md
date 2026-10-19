@@ -1,5 +1,10 @@
 # v2.2 İlerleme
 
+> **2026-10-19:** bağımsız inceleme bulguları ayrı dalda düzeltildi
+> (`claude/ui-v2.2-bulgu-duzeltme`). Plan, kırmızı/yeşil kanıtlar ve teslim raporu:
+> **`DUZELTME_TURU.md`**. Aşağıdaki "SABAH ÖZETİ" ilk gece turunu anlatır; oradaki "102 OK",
+> K5 gecikme tablosu ve Bakım ekranı tarifinin güncel hali `DUZELTME_TURU.md`'dedir.
+
 > Oturum yeniden başlarsa veya bağlam sıkıştırılırsa: önce bu dosya, sonra `KARARLAR.md`,
 > sonra `GOREV.md`. Kaldığın yerden devam et.
 
@@ -208,7 +213,9 @@ Gözetim poll'u tick (1 sn) başına TEK modül, hat boşsa; bilinen bütün mod
 | 16 | 16,1 sn | **47,3 sn** | 89,6 sn |
 
 Formül: tipik = N×1 sn + 0,1 sn; en kötü = N×max(1 sn, 2,5 sn STAT zaman aşımı + 0,3 sn hat koruması)
-+ 2,5 sn. Ek gecikmeler: hareket dağıtımı sırasında poll durur (modül başına ACK, normalde ~0,1 sn,
++ 2,5 sn. **Düzeltme (2026-10-19):** bu tablo yalnız gözetim trafiği varken geçerliydi; terminal
+sorguları varken 1 modülde 84,8 sn ölçüldü. Güncel sınırlar ve varsayımlar: `DUZELTME_TURU.md` →
+Bulgu 4 ve `hmi_config.worst_alarm_latency_loaded_s`. Ek gecikmeler: hareket dağıtımı sırasında poll durur (modül başına ACK, normalde ~0,1 sn,
 U2 yavaşsa ~1,6 sn, en çok 2,5 sn); terminal/Bakım sorgusu başına ≤2,8 sn. Simülasyonda ölçülen
 (16 modül, biri U2-yavaş, test `AlarmLatencyTest`): **10,8 sn**. Gerçek RS485 hattında ölçülmedi.
 
