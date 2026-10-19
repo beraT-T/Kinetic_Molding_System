@@ -53,10 +53,14 @@ def pump_events(cond, timeout_s=15.0):
 class Rig:
     """Controller + SimBridge + FakeTimerService. Zaman yalniz run() ile ilerler."""
 
-    def __init__(self, modules=(1,), speed=100.0, config=None, **bridge_kw):
+    def __init__(self, modules=(1,), speed=100.0, config=None, bridge_cls=None, demo=False,
+                 **bridge_kw):
         self.ts = FakeTimerService()
-        self.br = SimBridge(self.ts, modules=modules, speed_mm_s=speed, **bridge_kw)
+        self.br = (bridge_cls or SimBridge)(self.ts, modules=modules, speed_mm_s=speed,
+                                            **bridge_kw)
         kw = {"transport": self.br, "timers": self.ts}
+        if demo:
+            kw["demo"] = True
         if config is not None:
             kw["config"] = config
         try:

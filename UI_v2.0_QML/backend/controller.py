@@ -8,7 +8,14 @@ v2.2 ana fikir: ARAYUZ BILMEDIGI BIR SEYI BILDIGINI IDDIA ETMEZ.
   - Komut kabulu (ACK/ERR) ile tamamlanma ayri. Tamamlanma = yazma basarili + bu
     isleme ait ACK + ACK'ten SONRA istenmis taze STAT + 9 gecerli token + tolerans.
   - Islem nesli (op id) ve baglanti nesli (link gen): eski callback/cevap yok sayilir.
-  - Gozetim her zaman surer (round-robin STAT); is sonucu != makine gozetimi.
+  - Hat sirasi: zaman asimi / istenmemis cevap / yazma hatasi sonrasi modulun sonraki STAT
+    cevabi taze sayilmaz; once PING/PONG "citi" ile hat sirasi yeniden kurulur (_aligned).
+    Protokolde istek kimligi olmadigi icin bu kesin kanit DEGILDIR (firmware'in komutlari
+    sirayla isleyip cevapladigi varsayimina dayanir; docs/v2.2/GUVENLIK_ACIK_KONULAR.md §5).
+  - Gozetim her zaman surer (round-robin STAT); is sonucu != makine gozetimi. Gozetim
+    sorgusu kuyrugun onune girer; operator sorgulari sinirlidir (USER_QUERY_MAX).
+  - Bu oturumda gorulen moduller baglanti kesilse de unutulmaz: cevap vermeyen gorulmus
+    modul varken kapsam sessizce daralmaz, hareket kilitli kalir.
   - Kalici alarm modeli: "Uyarıyı gördüm" (onay) != "giderildi" (taze STAT ile normale donus).
   - Model yukleme atomik (dosya adi + grid birlikte, yalniz basarida).
 
@@ -27,6 +34,7 @@ from hmi_config import (TARGET_TOL_MM, HOME_ZERO_TOL_MM, MOTORS_PER_MODULE, MAX_
                         POLL_TICK_MS, STAT_TIMEOUT_MS, MOTION_ACK_TIMEOUT_MS,
                         PING_TIMEOUT_MS, PING_GUARD_MS, QUERY_TIMEOUT_MS, COMM_FAIL_LIMIT, SYNC_CONFIRM,
                         OP_PHASE_TIMEOUT_S, SERIAL_LINE_QUEUE_MAX, SAFE_MIN_MM, SAFE_MAX_MM,
+                        USER_QUERY_MAX, WRITE_DONE_TIMEOUT_MS,
                         data_stale_s, load_machine_config)
 from link import SerialLink, Request
 from serial_manager import SerialManager
@@ -51,8 +59,23 @@ def _ids_text(ids):
     return ", ".join(str(s) for s in sorted(ids))
 
 
+_NUM_WORD = ["", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz"]
+_TEN_WORD = ["", "on", "yirmi", "otuz", "kırk", "elli", "altmış", "yetmiş", "seksen", "doksan"]
+
+
+def _dative(n):
+    """Turkce yonelme eki (qml/Theme.js dative ile ayni kural): 1 -> "'e", 6 -> "'ya"."""
+    n = abs(int(n))
+    w = ("sıfır" if n == 0 else _NUM_WORD[n % 10] if n % 10 else _TEN_WORD[(n // 10) % 10])
+    v = next((ch for ch in reversed(w) if ch in "aeıioöuü"), "e")
+    return "'" + ("y" if w[-1] in "aeıioöuü" else "") + ("e" if v in "eiöü" else "a")
+
+
 STATE_TEXT = {"S": "hedefe ulaştı", "M": "hareket", "H": "referans alıyor",
               "F": "ARIZA", "I": "boşta"}
+# komut fiili -> operator dili (ham protokol kodu gostermemek icin)
+_VERB_TEXT = {"ARR": "şekil (9 ayrı hedef)", "ALL": "9 motor aynı hedef",
+              "MOV": "tek motor hareket", "HOME": "referans alma"}
 
 
 # Alarm turu -> operatore neden / etki / adim (v2.2, INCELEME 4b). Uydurma talimat yok:
@@ -69,16 +92,19 @@ ALARM_HELP = {
            "Etki: U2'ye bağlı motorların durumu bilinmiyor; bütün hareket kilitli.\n"
            "Adım: Kartlar arası bağlantı bakım personelince incelenmeli; tam durum cevabı "
            "gelince kayıt kapanır."),
-    "COMM": ("Neden: modül art arda sorgulara cevap vermedi (kablo, enerji, adres).\n"
-             "Etki: modülün hareket edip etmediği bilinmiyor; bütün hareket kilitli.\n"
+    "COMM": ("Neden: modül art arda sorgulara cevap vermedi veya bu oturumda görülmüş olduğu "
+             "hâlde taramada bulunamadı (kablo, enerji, adres).\n"
+             "Etki: modülün hareket edip etmediği bilinmiyor; bütün hareket kilitli. Kapsam "
+             "bulunan modüllere sessizce daraltılmaz.\n"
              "Adım: Haberleşme düzelip geçerli durum gelince kayıt kapanır. Modül bilerek "
-             "çıkarıldıysa uygulama yeniden başlatılmalı."),
+             "çıkarıldıysa uygulama yeniden başlatılmalı ve config/machine.json güncellenmeli."),
     "SYNC": ("Neden: komutun kabulü/tamamlanması doğrulanamadı, bağlantı kesildi veya modül "
              "yeniden başladı.\n"
              "Etki: modülün durumu belirsiz; bütün hareket kilitli. Komut otomatik tekrar "
              "gönderilmez.\n"
-             "Adım: Modül iki ardışık sorguda tutarlı ve hareketsiz durum bildirince kayıt "
-             "kendiliğinden kapanır."),
+             "Adım: Modülle haberleşme sırası yeniden kurulduktan sonra modül iki ardışık sorguda "
+             "tutarlı ve hareketsiz durum bildirince kayıt kendiliğinden kapanır. Protokolde "
+             "istek kimliği olmadığından bu, cevapların tazeliğinin kesin kanıtı değildir."),
     "LINK": ("Neden: seri bağlantı koptu veya kesildi.\n"
              "Etki: hareketin durduğu doğrulanamıyor; referans bilgisi geçersiz.\n"
              "Adım: Yeniden bağlanın ve 'Modülleri bul'. Hareket otomatik sürdürülmez."),
@@ -137,6 +163,26 @@ class ModState:
         # son KABUL EDILEN komut hedefi (motor basina mm; None = yok/belirsiz).
         # Olcum (motors) ile karistirilmaz; STAT bunu degistirmez.
         self.targets = [None] * MOTORS_PER_MODULE
+        # tek motor referansi (firmware bildirimi). Hareket izni icin YETMEZ (K31):
+        # hareket, modulun tamamina referans (homed) ister.
+        self.referenced = [False] * MOTORS_PER_MODULE
+        # hat sirasi (link yazma sira numaralari, link.writes):
+        #   misalign_w: son belirsizlik (zaman asimi / istenmemis cevap / yazma hatasi)
+        #   fence_w   : son basarili PING/PONG citinin yazma numarasi
+        #   stat_w    : veri olarak KULLANILAN son STAT'in yazma numarasi
+        self.misalign_w = None
+        self.fence_w = None
+        self.stat_w = None
+
+    def needs_fence(self):
+        return self.misalign_w is not None and (self.fence_w is None or
+                                                self.fence_w <= self.misalign_w)
+
+    def verified(self):
+        """Son belirsizlikten sonra hat sirasi kurulmus VE veri olarak kullanilan bir
+        STAT gelmis mi."""
+        return self.misalign_w is None or (self.stat_w is not None and
+                                           self.stat_w > self.misalign_w)
 
     def letters(self):
         return [m[0] if m else None for m in self.motors]
@@ -172,6 +218,7 @@ class Controller(QObject):
     modulesChanged    = Signal()
     configChanged     = Signal()
     scanningChanged   = Signal()
+    sessionChanged    = Signal()
     # faz metni, biten MOTOR, toplam motor, gecen sn, tahmini kalan sn (-1 bilinmiyor)
     opProgress        = Signal(str, int, int, int, int)
     operationFinished = Signal(bool, str, str)        # ok, baslik, mesaj
@@ -206,12 +253,18 @@ class Controller(QObject):
         self._callSig.connect(self._run_posted)
         self._jobDone.connect(self._on_job_done)
 
-        self._link = SerialLink(self._ts, self._write_async, self._on_unsolicited)
+        self._link = SerialLink(self._ts, self._write_async, self._on_unsolicited,
+                                on_stall=self._on_link_stall)
 
         self._connected = False
         self._ports = []
         self._current_slave = 1
         self._mods = {}              # sid -> ModState (bu baglanti)
+        # Bu UYGULAMA OTURUMUNDA gecerli cevap vermis moduller. Baglanti kesilince
+        # SILINMEZ: kayip modul kapsamdan sessizce dusmez (bulgu 3). Uygulama yeniden
+        # baslayinca bos baslar (kalicilik karari: KARARLAR K30).
+        self._session_seen = set()
+        self._session_id = 0         # baglanti oturumu (bagla/kes ile artar; QML onaylari)
         self._scanning = False
         self._scan_left = 0
         self._poll_i = 0
@@ -303,6 +356,20 @@ class Controller(QObject):
         return sorted(s for s, m in self._mods.items() if m.known)
     knownSlaves = Property("QVariantList", _get_known, notify=activeSlavesChanged)
 
+    def _get_seen(self):
+        return sorted(self._session_seen)
+    seenModules = Property("QVariantList", _get_seen, notify=activeSlavesChanged)
+
+    def _lost(self):
+        """Bu oturumda gorulmus ama su an erisilemeyen moduller (bagliyken)."""
+        if not self._connected:
+            return []
+        return sorted(self._session_seen - set(self._get_active()))
+    lostModules = Property("QVariantList", _lost, notify=activeSlavesChanged)
+
+    def _get_session(self): return self._session_id
+    sessionId = Property(int, _get_session, notify=sessionChanged)
+
     def _get_grid(self):
         return list(self._model["grid"]) if self._model else []
     gridData = Property("QVariantList", _get_grid, notify=gridChanged)
@@ -313,6 +380,9 @@ class Controller(QObject):
 
     def _get_model_name(self): return self._model["name"] if self._model else ""
     modelName = Property(str, _get_model_name, notify=modelChanged)
+
+    def _get_model_id(self): return int(self._model["id"]) if self._model else 0
+    modelId = Property(int, _get_model_id, notify=modelChanged)
 
     def _get_model_state(self): return self._model_state
     modelState = Property(str, _get_model_state, notify=modelChanged)
@@ -466,8 +536,10 @@ class Controller(QObject):
         self._poll_i = 0
         self._link.start()
         self._connected = True
+        self._session_id += 1
         self._resolve("LINK")
         self._tick_timer.start()
+        self.sessionChanged.emit()
         self.connectedChanged.emit()
         self.activeSlavesChanged.emit()
         self._log(f"Bağlandı: {device} @ {baud}" + (" (SİMÜLASYON)" if self._demo else ""))
@@ -497,6 +569,7 @@ class Controller(QObject):
         except Exception:
             pass
         self._connected = False
+        self._session_id += 1
         self._scanning = False
         self._mods = {}
         for sid in at_risk:
@@ -509,12 +582,20 @@ class Controller(QObject):
             self._raise("LINK", "LINK", 1, None, None,
                         "Bağlantı kesildi. Hareketin durduğu doğrulanamıyor")
         self._log("Bağlantı kesildi" if manual else f"HATA: bağlantı koptu: {reason}")
+        self.sessionChanged.emit()
         self.connectedChanged.emit()
         self.activeSlavesChanged.emit()
         self.scanningChanged.emit()
         self._mod_rev += 1
         self.modulesChanged.emit()
         self._changed()
+
+    def _on_link_stall(self, req):
+        """Yazma tamamlanma bildirimi gelmedi: seri katman askida. Baglanti dusurulur;
+        komut TEKRARLANMAZ; durum yeniden baglanip okunana kadar hareket kilitli."""
+        self._drop_link(manual=False,
+                        reason=f"seri porta yazma {WRITE_DONE_TIMEOUT_MS / 1000:.1f} sn içinde "
+                               f"tamamlanmadı ({req.cmd})")
 
     # ================= TARAMA (PING) =================
     @Slot()
@@ -539,15 +620,20 @@ class Controller(QObject):
             return
         if status == "ok":
             self._log(f"← {reply.raw}")
-            self._mark_reply(req.sid)
-        elif status == "timeout":
+            self._mark_reply(req.sid).fence_w = req.wseq
+        elif status in ("timeout", "write_failed", "write_stalled"):
             self._note_no_reply(req.sid)
+            self._note_misaligned(req.sid)
         self._scan_left -= 1
         if self._scan_left <= 0 and self._scanning:
             self._scanning = False
             self.scanningChanged.emit()
             act = self._get_active()
             self._log(f"Tarama bitti: {len(act)} modül [{_ids_text(act)}]")
+            for sid in self._lost():
+                self._raise(f"COMM:{sid}", "COMM", 2, sid, None,
+                            f"Modül {sid} bu oturumda görülmüştü, şimdi cevap vermiyor "
+                            "(taramada bulunamadı)")
         self._changed()
 
     def _scan_block(self):
@@ -577,6 +663,7 @@ class Controller(QObject):
         m.reachable = True
         m.fails = 0
         m.last_reply = self._ts.now()
+        self._session_seen.add(sid)
         if newly:
             self.activeSlavesChanged.emit()
         return m
@@ -591,6 +678,30 @@ class Controller(QObject):
             self.activeSlavesChanged.emit()
             self._raise(f"COMM:{sid}", "COMM", 2, sid, None,
                         f"Modül {sid} cevap vermiyor (son geçerli durum {self._age_text(m)})")
+
+    def _note_misaligned(self, sid):
+        """Bu modulden gelecek SONRAKI cevap tazelik kaniti sayilmaz (gec cevap bir sonraki
+        ayni istege eslesebilir). PING/PONG citi + yeni STAT gerekir."""
+        if sid is None:
+            return
+        m = self._mods.get(sid)
+        if m is None:
+            if sid not in self._session_seen:
+                return
+            m = self._mod(sid)
+        first = not m.needs_fence()
+        m.misalign_w = self._link.writes
+        if first:
+            self._log(f"Modül {sid}: cevap sırası belirsiz (zaman aşımı/beklenmeyen cevap); "
+                      "sonraki cevaplar PING/PONG ile sıra yeniden kurulana kadar durum için "
+                      "kullanılmayacak")
+
+    def _aligned(self, m, req):
+        if req.wseq is None:
+            return False
+        if m.misalign_w is None:
+            return True
+        return not m.needs_fence() and req.wseq > m.fence_w
 
     def _age_s(self, m):
         if m is None or m.stat_t is None:
@@ -615,46 +726,114 @@ class Controller(QObject):
         self.modulesChanged.emit()
         self._changed()
 
+    def _poll_targets(self):
+        """Gozetim listesi: bu baglantida bilinen moduller + bu OTURUMDA gorulmus ama
+        simdi bulunamayan moduller (geri gelirlerse gorulsun; kapsam sessizce daralmasin)."""
+        return sorted(set(self._get_known()) | self._session_seen)
+
     def _poll_next(self):
-        """Gozetim: link bostayken tick basina TEK modul (round-robin, bilinen BUTUN
-        moduller - erisilemeyenler dahil, geri gelirlerse gorulsun)."""
-        if not self._link.idle() or self._scanning:
+        """Gozetim: tick basina TEK modul (round-robin). Gozetim istegi kuyrugun ONUNE
+        girer ve en fazla bir tane bekler: hatta o an bulunan tek istegi bekler, tarama /
+        hareket dagitimi / operator sorgulari gozetimi durdurmaz (bulgu 4).
+        Hat sirasi belirsiz ya da bu baglantida henuz cevap vermemis modul icin STAT
+        yerine PING citi gonderilir."""
+        if self._link.has(lambda r: r.kind in ("poll", "fence")):
             return
-        if self._op and self._op.get("dispatching"):
+        targets = self._poll_targets()
+        if not targets:
             return
-        known = self._get_known()
-        if not known:
+        self._poll_i %= len(targets)
+        sid = targets[self._poll_i]
+        self._poll_i = (self._poll_i + 1) % len(targets)
+        m = self._mods.get(sid)
+        if m is None or not m.known or m.needs_fence():
+            self._link.submit(Request(P.cmd_ping(sid), "fence", PING_TIMEOUT_MS,
+                                      on_done=self._on_fence_done, sid=sid,
+                                      guard_ms=PING_GUARD_MS), front=True)
             return
-        self._poll_i %= len(known)
-        sid = known[self._poll_i]
-        self._poll_i = (self._poll_i + 1) % len(known)
-        self._submit_stat(sid, "poll")
+        out = self._link.outstanding
+        if out is not None and out.verb == "STAT" and out.sid == sid:
+            return                       # bu modulun STAT'i zaten hatta
+        if self._link.promote(lambda r: r.verb == "STAT" and r.sid == sid):
+            return                       # bekleyen operator STAT'i gozetim yerine one alindi
+        self._link.submit(Request(P.cmd_stat(sid), "poll", STAT_TIMEOUT_MS,
+                                  on_done=self._on_stat_done, sid=sid), front=True)
+
+    def _on_fence_done(self, req, status, reply):
+        if req.gen != self._link.gen or status in ("link_lost", "cancelled"):
+            return
+        if status == "ok":
+            m = self._mark_reply(req.sid)
+            was = m.needs_fence()
+            m.fence_w = req.wseq
+            self._log(f"← {reply.raw}", quiet=not was)
+            if was and not m.needs_fence():
+                self._log(f"Modül {req.sid}: cevap sırası PING/PONG ile yeniden kuruldu; "
+                          "sonraki durum cevabı kullanılacak")
+        else:
+            if status == "timeout":
+                self._log(f"Cevap yok: {req.cmd}", quiet=not (req.sid in self._mods))
+            self._note_no_reply(req.sid)
+            self._note_misaligned(req.sid)
+        self._changed()
+
+    def _user_query_block(self, cmd):
+        """Operator sorgusu (terminal / Bakim) kabul edilir mi? "" = evet.
+        Sinir: gozetimi geciktirmesin, cift dokunma ayni sorguyu iki kez gondermesin."""
+        user = lambda r: r.kind in ("query", "raw")      # noqa: E731
+        if self._link.has(lambda r: user(r) and r.cmd == cmd):
+            return f"Aynı sorgu zaten sırada: {cmd}."
+        if self._link.count(user) >= USER_QUERY_MAX:
+            return (f"Bekleyen sorgu sınırı ({USER_QUERY_MAX}) dolu; önceki sorgular "
+                    "bitince tekrar deneyin. (Makine gözetimi bundan etkilenmez.)")
+        return ""
 
     def _submit_stat(self, sid, kind):
+        """Operator STAT sorgusu. "" = kabul (veya ayni modulun STAT'i zaten bekliyor)."""
         if self._link.has(lambda r: r.verb == "STAT" and r.sid == sid):
-            return True
-        return self._link.submit(Request(P.cmd_stat(sid), kind, STAT_TIMEOUT_MS,
-                                         on_done=self._on_stat_done, sid=sid))
+            return ""
+        cmd = P.cmd_stat(sid)
+        why = self._user_query_block(cmd)
+        if why:
+            return why
+        ok = self._link.submit(Request(cmd, kind, STAT_TIMEOUT_MS,
+                                       on_done=self._on_stat_done, sid=sid))
+        return "" if ok else "Seri kuyruk dolu."
 
     @Slot(int)
     def requestStatus(self, slave_id):
         """Secili modulun durumunu sorgula (kuyruga girer; hatta tek istek)."""
         if not self._connected:
             return
-        if not self._submit_stat(int(slave_id), "query"):
-            self._log("UYARI: seri kuyruk dolu, sorgu eklenmedi")
+        why = self._submit_stat(int(slave_id), "query")
+        if why:
+            self._log("UYARI: sorgu eklenmedi: " + why)
 
     def _on_stat_done(self, req, status, reply):
         if req.gen != self._link.gen or status in ("link_lost", "cancelled"):
             return
         if status == "ok":
-            self._apply_stat(req.sid, reply, req)
-        elif status == "timeout":
-            self._log(f"Cevap yok: {req.cmd}")
-            self._note_no_reply(req.sid)
-        elif status == "write_failed":
-            self._log(f"HATA: yazılamadı: {req.cmd}")
+            m = self._mods.get(req.sid)
+            if m is not None and not self._aligned(m, req):
+                self._stat_unverified(req.sid, reply)
+            else:
+                self._apply_stat(req.sid, reply, req)
+        else:
+            if status == "timeout":
+                self._log(f"Cevap yok: {req.cmd}")
+                self._note_no_reply(req.sid)
+            elif status == "write_failed":
+                self._log(f"HATA: yazılamadı: {req.cmd}")
+            elif status == "write_stalled":
+                self._log(f"HATA: yazma tamamlanmadı: {req.cmd}")
+            self._note_misaligned(req.sid)
         self._changed()
+
+    def _stat_unverified(self, sid, reply):
+        """Hat sirasi kurulmadan gelen STAT: eski olabilir. Veri olarak KULLANILMAZ
+        (olcum, tamamlanma, alarm cozme yok); icindeki ariza (F) yine alarm uretir (K20)."""
+        self._log(f"← {reply.raw}  (cevap sırası doğrulanmadan geldi; durum için kullanılmadı)")
+        self._alarm_only(reply)
 
     def _apply_stat(self, sid, reply, req):
         body = reply.fields[0] if reply.fields else ""
@@ -670,6 +849,7 @@ class Controller(QObject):
             m.last_reply = self._ts.now()     # cevap var ama icerik gecersiz
         m.motors = list(info["motors"])
         m.stat_t = req.t_sent if req.t_sent is not None else self._ts.now()
+        m.stat_w = req.wseq
         m.complete = info["complete"]
         m.u2err = info["u2err"]
         letters = m.letters()
@@ -679,6 +859,7 @@ class Controller(QObject):
         if reset:
             m.seen = [False] * MOTORS_PER_MODULE
             m.homed = False
+            m.referenced = [False] * MOTORS_PER_MODULE
             m.targets = [None] * MOTORS_PER_MODULE
             self._raise(f"SYNC:{sid}", "SYNC", 1, sid, None,
                         f"Modül {sid} yeniden başlamış olabilir (durum I). Referans geçersiz; "
@@ -700,13 +881,16 @@ class Controller(QObject):
             key = f"F:{sid}:{i + 1}"
             if mt is not None and mt[0] == "F":
                 m.homed = False
+                m.referenced[i] = False
                 self._raise(key, "F", 2, sid, i + 1, f"MODÜL {sid} / MOTOR {i + 1} ARIZA")
             elif mt is not None:
                 self._resolve(key)
         if info["unmapped_faults"]:
             m.homed = False
+            m.referenced = [False] * MOTORS_PER_MODULE
             why = ("firmware sürümü yapılandırılmadı" if not self._variant()
-                   else "U2ERR biçimi yapılandırılan sürümle çelişiyor")
+                   else "U2 hata bildiriminin biçimi yapılandırılan firmware sürümüyle "
+                        "çelişiyor")
             self._raise(f"F:{sid}:?", "F", 2, sid, None,
                         f"MODÜL {sid} ARIZA (motor numarası belirlenemedi: {why})")
         elif m.complete and "F" not in letters:
@@ -715,8 +899,9 @@ class Controller(QObject):
         # --- U2 / iletisim / gecersiz cevap ---
         if info["u2err"]:
             m.homed = False
+            m.referenced = [False] * MOTORS_PER_MODULE
             self._raise(f"U2:{sid}", "U2", 2, sid, None,
-                        f"Modül {sid}: U2 kartı cevap vermiyor; "
+                        f"Modül {sid}: ikinci kart (U2) cevap vermiyor; "
                         f"{P.u2_motor_text(self._variant())} durumu bilinmiyor")
         elif m.complete:
             self._resolve(f"U2:{sid}")
@@ -759,8 +944,16 @@ class Controller(QObject):
 
     def _on_unsolicited(self, reply, line):
         """Bekleyen istege ait olmayan satir: veri olarak KULLANILMAZ (eski olabilir).
-        Ama icindeki ariza (F) bilgisi kaybolmaz: alarm uretir (muhafazakar)."""
+        Ama icindeki ariza (F) bilgisi kaybolmaz: alarm uretir (muhafazakar). Modul
+        kimligi tasiyan istenmemis cevap, o modulun hat sirasini belirsiz yapar (gec
+        cevap: bir onceki eslesmenin de eski olabilecegini gosterir)."""
         self._log(f"← {line}  (beklenmeyen cevap; durum için kullanılmadı)")
+        if reply is not None and reply.sid is not None and 1 <= reply.sid <= MAX_MODULES:
+            self._note_misaligned(reply.sid)
+        self._alarm_only(reply)
+        self._changed()
+
+    def _alarm_only(self, reply):
         if reply is None or reply.verb != "STAT" or reply.sid is None:
             return
         info = P.interpret_stat(reply.fields[0] if reply.fields else "", self._variant())
@@ -769,12 +962,14 @@ class Controller(QObject):
             if mt is not None and mt[0] == "F":
                 if sid in self._mods:
                     self._mods[sid].homed = False
+                    self._mods[sid].referenced[i] = False
                 self._raise(f"F:{sid}:{i + 1}", "F", 2, sid, i + 1,
                             f"MODÜL {sid} / MOTOR {i + 1} ARIZA")
         if info["unmapped_faults"]:
+            if sid in self._mods:
+                self._mods[sid].homed = False
             self._raise(f"F:{sid}:?", "F", 2, sid, None,
                         f"MODÜL {sid} ARIZA (motor numarası belirlenemedi)")
-        self._changed()
 
     # ================= ALARMLAR =================
     def _raise(self, key, kind, level, sid, motor, text):
@@ -870,6 +1065,11 @@ class Controller(QObject):
             m = self._mods.get(sid)
             if m is None or not m.known or not m.reachable:
                 return f"Modül {sid} erişilemiyor."
+        lost = self._lost()
+        if lost:
+            return (f"Bu oturumda görülen Modül {_ids_text(lost)} şimdi cevap vermiyor; "
+                    "kapsam daraltılmaz, hareket kilitli. Modül bilerek çıkarıldıysa "
+                    "uygulamayı yeniden başlatın.")
         act = self._active_alarms()
         faults = [a for a in act if a["kind"] == "F"]
         if faults:
@@ -885,8 +1085,16 @@ class Controller(QObject):
             return issue
         if kind in ("send_selected", "maint_move"):
             for sid in scope:
-                if not self._mods[sid].homed:
-                    return f"Modül {sid} referanssız. Önce referans alın."
+                m = self._mods[sid]
+                if m.homed:
+                    continue
+                refd = [i + 1 for i, r in enumerate(m.referenced) if r]
+                if refd:
+                    return (f"Modül {sid}: yalnız motor {_ids_text(refd)} referanslı; tek motor "
+                            "referansı yeterli değil. Hareket için önce modülün tamamına "
+                            f"referans alın ('Modül {sid}{_dative(sid)} referans al').")
+                return (f"Modül {sid} referanssız. Önce modülün tamamına referans alın "
+                        f"('Modül {sid}{_dative(sid)} referans al').")
         return ""
 
     def _motion_issue(self):
@@ -902,6 +1110,9 @@ class Controller(QObject):
             if m.watch_t is not None:
                 return f"Modül {m.sid}: hareket sonrası durgunluk henüz doğrulanmadı."
         for m in known:
+            if m.needs_fence() or not m.verified():
+                return (f"Modül {m.sid}: zaman aşımı/beklenmeyen cevaptan sonra cevap sırası "
+                        "yeniden doğrulanıyor; güncel durum bilinmiyor.")
             if m.stat_t is None:
                 return f"Modül {m.sid}: durum henüz okunmadı."
             if not m.complete:
@@ -962,6 +1173,42 @@ class Controller(QObject):
     @Slot(int)
     def sendArrayToSlave(self, slave_id):
         self.startSendSelected(slave_id)
+
+    # ---- onay penceresinden: operatorun ONAYLADIGI baglam degistiyse baslatma (bulgu 1) ----
+    def _context_changed(self, what):
+        msg = (f"Onaydan sonra {what} değişti; işlem başlatılmadı.\n"
+               "Adım: Güncel bilgiyle yeniden başlatıp onay penceresini tekrar okuyun.")
+        self._log("REDDEDİLDİ (onay bağlamı): " + msg.replace("\n", " "))
+        self._reject("İşlem başlatılmadı", msg)
+
+    @Slot("QVariantList", int)
+    def startProductionConfirmed(self, modules, model_id):
+        mods = sorted(int(x) for x in modules)
+        if mods != self._get_active():
+            return self._context_changed(
+                f"modül listesi ({_ids_text(mods) or '—'} → {_ids_text(self._get_active()) or '—'})")
+        if int(model_id) != self._get_model_id():
+            return self._context_changed("yüklü model")
+        self.startProduction()
+
+    @Slot("QVariantList")
+    def startHomeAllConfirmed(self, modules):
+        mods = sorted(int(x) for x in modules)
+        if mods != self._get_active():
+            return self._context_changed(
+                f"modül listesi ({_ids_text(mods) or '—'} → {_ids_text(self._get_active()) or '—'})")
+        self.startHomeAll()
+
+    @Slot(int, int)
+    def startSendSelectedConfirmed(self, slave_id, model_id):
+        if int(model_id) != self._get_model_id():
+            return self._context_changed("yüklü model")
+        self.startSendSelected(int(slave_id))
+
+    @Slot(str)
+    def logUi(self, text):
+        """QML'den gunluge not (or. onay penceresi baglam degistigi icin kapatildi)."""
+        self._log("ARAYÜZ: " + str(text))
 
     # ================= BAKIM (tek modul) =================
     def _maint(self, kind, sid, phase, title):
@@ -1057,8 +1304,15 @@ class Controller(QObject):
             return "Bağlantı yok."
         v = c.verb
         if v == "STAT":
-            return "" if self._submit_stat(c.sid, "raw") else "Seri kuyruk dolu."
+            why = self._submit_stat(c.sid, "raw")
+            if why:
+                self._log(f"REDDEDİLDİ (terminal) {c.text}: {why}")
+            return why
         if v in ("PING", "GETID", "GETPOS"):
+            why = self._user_query_block(c.text)
+            if why:
+                self._log(f"REDDEDİLDİ (terminal) {c.text}: {why}")
+                return why
             timeout = PING_TIMEOUT_MS if v == "PING" else QUERY_TIMEOUT_MS
             ok = self._link.submit(Request(c.text, "raw", timeout, on_done=self._on_raw_done,
                                            sid=c.sid, motor=c.motor))
@@ -1081,11 +1335,15 @@ class Controller(QObject):
         if status == "ok":
             self._log(f"← {reply.raw}")
             if reply.verb == "PONG":
-                self._mark_reply(req.sid)
-        elif status == "timeout":
-            self._log(f"Cevap yok: {req.cmd}")
-        elif status == "write_failed":
-            self._log(f"HATA: yazılamadı: {req.cmd}")
+                self._mark_reply(req.sid).fence_w = req.wseq
+        else:
+            if status == "timeout":
+                self._log(f"Cevap yok: {req.cmd}")
+            elif status == "write_failed":
+                self._log(f"HATA: yazılamadı: {req.cmd}")
+            elif status == "write_stalled":
+                self._log(f"HATA: yazma tamamlanmadı: {req.cmd}")
+            self._note_misaligned(req.sid)
         self._changed()
 
     # ================= ISLEM (OP) =================
@@ -1172,20 +1430,31 @@ class Controller(QObject):
         if status == "ok":
             self._log(f"← {reply.raw}")
         ok = status == "ok" and P.is_ack_ok(reply)
+        if not stale_gen and status in ("timeout", "write_failed", "write_stalled"):
+            self._note_misaligned(sid)
         if not stale_gen and m is not None and not ok and \
                 status not in ("cancelled", "link_lost"):
+            what = _VERB_TEXT.get(req.verb, req.verb)
             if status == "ok":         # *ERR
-                why = (f"Modül {sid}: {reply.verb} — U2 komutu onaylamadı; "
+                why = (f"Modül {sid}: {what} komutunu ikinci kart (U2) onaylamadı; "
                        "hareketin başlamadığı varsayılamaz")
             elif status == "timeout":
-                why = (f"Modül {sid}: {req.verb} kabulü doğrulanamadı (cevap yok); "
+                why = (f"Modül {sid}: {what} komutunun kabulü doğrulanamadı (cevap yok); "
                        "komut ulaşmış olabilir")
+            elif status == "write_stalled":
+                why = (f"Modül {sid}: {what} komutunun yazılması tamamlanmadı; komutun ulaşıp "
+                       "ulaşmadığı belirsiz")
             else:
-                why = f"Modül {sid}: {req.verb} yazılamadı; komutun ulaşıp ulaşmadığı belirsiz"
+                why = (f"Modül {sid}: {what} komutu yazılamadı; komutun ulaşıp ulaşmadığı "
+                       "belirsiz")
             m.sync_need = True
             m.sync_prev, m.sync_count = None, 0
             if req.verb == "HOME":
                 m.homed = False
+                if req.motor:
+                    m.referenced[req.motor - 1] = False
+                else:
+                    m.referenced = [False] * MOTORS_PER_MODULE
             # kabul belirsiz: hangi motorun hangi hedefe gittigi bilinmiyor
             if req.verb == "MOV" and req.motor:
                 m.targets[req.motor - 1] = None
@@ -1212,8 +1481,8 @@ class Controller(QObject):
         u2txt = P.u2_motor_text(self._variant())
         if status == "ok":
             self._end_op(False, "Komut kısmen kabul edildi",
-                         f"Modül {sid}: {reply.raw}. Neden: modülün ikinci kartı (U2) "
-                         "komutu onaylamadı.\n"
+                         f"Modül {sid}: {_VERB_TEXT.get(req.verb, req.verb)} komutunu "
+                         "modülün ikinci kartı (U2) onaylamadı.\n"
                          f"Etki: {u2txt} komutu almamış olabilir; diğer motorlar hareket "
                          "etmiş olabilir. Hareketin başlamadığı varsayılamaz. Kalan "
                          "modüllere komut gönderilmedi.\n"
@@ -1230,10 +1499,19 @@ class Controller(QObject):
                          "kadar hareket kilitli.")
         elif status == "write_failed":
             self._end_op(False, "Komut gönderilemedi",
-                         f"Seri porta yazılamadı ({req.cmd}).\n"
+                         f"Modül {sid}: seri porta yazılamadı.\n"
                          "Etki: Komutun modüle ulaşıp ulaşmadığı belirsiz; kalan modüllere "
                          "komut gönderilmedi.\n"
                          "Adım: Bağlantıyı kontrol edin; durum doğrulanana kadar hareket kilitli.")
+        elif status == "write_stalled":
+            self._end_op(False, "Yazma tamamlanmadı",
+                         f"Modül {sid}: seri porta yazma {WRITE_DONE_TIMEOUT_MS / 1000:.1f} sn "
+                         "içinde tamamlanmadı.\n"
+                         "Etki: Komutun modüle ulaşıp ulaşmadığı belirsiz; hareket başlamış "
+                         "olabilir. Komut tekrar gönderilmez, kalan modüllere komut gönderilmedi, "
+                         "bağlantı kesildi.\n"
+                         "Adım: Bağlantıyı yeniden kurup 'Modülleri bul'; durum okunana kadar "
+                         "hareket kilitli.")
         self._changed()
 
     def _module_meets(self, ph, sid, m):
@@ -1277,6 +1555,9 @@ class Controller(QObject):
             op["done"].add(sid)
             if ph["verb"] == "HOME":
                 m.homed = True
+                m.referenced = [True] * MOTORS_PER_MODULE
+            elif ph["verb"] == "HOMEM":
+                m.referenced[ph["cmds"][sid][1] - 1] = True
         else:
             op["done"].discard(sid)
         self._emit_progress()
@@ -1302,8 +1583,12 @@ class Controller(QObject):
             if m is not None:
                 m.sync_need = True
                 m.sync_prev, m.sync_count = None, 0
-                if ph["verb"] in ("HOME", "HOMEM"):
+                if ph["verb"] == "HOME":
                     m.homed = False
+                    m.referenced = [False] * MOTORS_PER_MODULE
+                elif ph["verb"] == "HOMEM":
+                    m.homed = False
+                    m.referenced[ph["cmds"][sid][1] - 1] = False
             self._raise(f"SYNC:{sid}", "SYNC", 1, sid, None,
                         f"Modül {sid}: süre içinde tamamlanma doğrulanamadı")
         self._end_op(False, "Zaman aşımı",
@@ -1342,8 +1627,13 @@ class Controller(QObject):
         elif last["verb"] == "HOMEM":
             sid = mods[0]
             motor = last["cmds"][sid][1]
+            m = self._mods.get(sid)
+            note = ("Modülün tamamına referans daha önce alınmıştı."
+                    if m is not None and m.homed else
+                    "Bu, modül referansını tamamlamaz: tek motor hareketi için modülün "
+                    f"tamamına referans alınmalıdır ('Modül {sid}{_dative(sid)} referans al').")
             msg = (f"Modül {sid} / Motor {motor}: referans alma tamamlandı "
-                   "(firmware bildirimi).")
+                   f"(firmware bildirimi).\n{note}")
         elif last["verb"] == "MOV":
             sid = mods[0]
             motor = last["cmds"][sid][1]
@@ -1423,6 +1713,7 @@ class Controller(QObject):
             self._log("Eski model hesaplaması yok sayıldı")
             return
         if ok:
+            payload["id"] = lid
             self._model = payload
             self._model_state = "ready"
             self._model_error = ""
@@ -1453,7 +1744,8 @@ class Controller(QObject):
     def _set_model_for_test(self, name, grid):
         g = tuple(int(v) for v in grid)
         self._load_seq += 1
-        self._model = {"name": name, "path": "", "grid": g, "stats": grid_stats(g),
+        self._model = {"id": self._load_seq, "name": name, "path": "", "grid": g,
+                       "stats": grid_stats(g),
                        "info": {"cells": 144, "filled": 0, "clipped_low": 0,
                                 "clipped_high": 0, "offset_mm": 0.0, "max_neighbor": 0}}
         self._model_state = "ready"
@@ -1471,16 +1763,24 @@ class Controller(QObject):
             motors.append({"known": mt is not None, "letter": mt[0] if mt else "",
                            "mm": mt[1] if mt else -1,
                            "target": -1 if tgt is None else int(tgt),
-                           "fault": bool(mt and mt[0] == "F")})
+                           "fault": bool(mt and mt[0] == "F"),
+                           "referenced": bool(m and (m.homed or m.referenced[i]))})
         age = self._age_s(m)
         thr = data_stale_s(max(1, len(self._get_known())))
+        stale = age is None or age > thr
+        aligned = bool(m and not m.needs_fence() and m.verified())
         return {
             "sid": sid, "known": bool(m and m.known), "reachable": bool(m and m.reachable),
             "homed": bool(m and m.homed), "u2Error": bool(m and m.u2err),
             "complete": bool(m and m.complete), "ageS": -1 if age is None else int(age),
-            "stale": age is None or age > thr, "syncing": bool(m and m.sync_need),
+            "stale": stale, "syncing": bool(m and m.sync_need),
             "moving": bool(m and m.moving()), "motors": motors,
             "alarm": any(a["active"] and a["sid"] == sid for a in self._alarms.values()),
+            # "dogrulanmis guncel": baglanti var, erisilebilir, hat sirasi kurulu, tam ve
+            # taze STAT. Degilse ekranda "son bilinen" yazilir (bulgu: son bilinen != guncel).
+            "aligned": aligned, "lost": sid in self._lost(),
+            "current": bool(self._connected and m and m.known and m.reachable and aligned
+                            and m.complete and not stale),
         }
 
     @Slot(int, result="QVariantList")
@@ -1550,6 +1850,8 @@ class Controller(QObject):
         exp = self._cfg.get("expected_modules")
         d["plan"] = {
             "model": self._model["name"] if self._model else "",
+            "modelId": self._get_model_id(),
+            "lost": self._lost(), "seen": sorted(self._session_seen),
             "modules": list(active), "motors": len(active) * MOTORS_PER_MODULE,
             "needHome": [s for s in active if not self._mods[s].homed],
             "expected": list(exp) if exp else [], "expectedConfigured": bool(exp),
