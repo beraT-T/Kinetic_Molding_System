@@ -47,11 +47,12 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                color: root.info.known && !root.info.stale ? Theme.textDim : Theme.warn
+                color: root.info.current ? Theme.textDim : Theme.warn
                 font.pixelSize: Theme.fsSmall
                 text: (root.info.known
-                       ? ("Son ölçüm " + (root.info.ageS < 0 ? "yok" : root.info.ageS + " sn önce") +
-                          (root.info.stale ? " — güncel değil" : ""))
+                       ? ((root.info.current ? "Son ölçüm " : "Son bilinen durum ") +
+                          (root.info.ageS < 0 ? "yok" : root.info.ageS + " sn önce") +
+                          (!root.info.current ? " — güncel değil" : ""))
                        : "Bu modülden durum alınmadı (ölçüm bilinmiyor).") +
                       "   ·   Hedefler yüklü modelden; ölçülen konum değildir."
             }
@@ -87,7 +88,8 @@ Item {
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Ölçülen " + (mi.known ? mi.mm + " mm" : "—") +
+                                text: (root.info.current ? "Ölçülen " : "Son bilinen ") +
+                                      (mi.known ? mi.mm + " mm" : "—") +
                                       (mi.known ? " · " + Theme.stateLabel(mi.letter) : "")
                                 color: mi.fault ? Theme.alarm : Theme.textDim
                                 font.pixelSize: Theme.fsSmall; font.family: Theme.fontMono
@@ -102,6 +104,7 @@ Item {
                 spacing: Theme.gapMin
                 Item { Layout.fillWidth: true }
                 TouchButton {
+                    objectName: "detailMakeTarget"
                     text: "Hedef modül yap"
                     color: Theme.actionNeutral
                     enabled: !app.busy && app.currentSlaveId !== root.sid

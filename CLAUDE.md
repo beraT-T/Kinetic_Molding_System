@@ -23,9 +23,9 @@ Host (PC / Raspberry Pi 5)
 Blue Pill (STM32F103)  — ŞEFFAF RS485 köprüsü, 9600 baud
    │ RS485 (adresli)
 Slave modülü = 2× Black Pill (STM32F401RC veya F411CEU6*, HSE 25MHz)
-   ├─ U3 "yönetici": RS485 dinler + motor 6-9 (yerel) + flash slave ID
+   ├─ U3 "yönetici": RS485 dinler + yerel motorlar (v5.1: 6-9, v5f411: 1-4) + flash slave ID
    │     └─ USART2 115200 ──> U2
-   └─ U2 "işçi": sadece USART2 + motor 1-5
+   └─ U2 "işçi": sadece USART2 + kalan motorlar (v5.1: 1-5, v5f411: 5-9)
 ```
 
 \* İki ayrı firmware seti var: F401RC için `Adaptif_kalip_v5_*`, F411CEU6 (WeAct BlackPill V3.0)
@@ -145,16 +145,28 @@ Ana fikir: **arayüz bilmediği bir şeyi bildiğini iddia etmez.** Gerekçeler/
   buradan geçir. Terminal: `PING/STAT/GETPOS/GETID` serbest, `ARR/ALL/MOV/HOME` yetkili,
   `SETID` kilitli, tanınmayan fiil red. Bakım hedefleri 10–590 mm.
 - **Kilit:** işlem sürüyor, hareket komutu yolda, bilinen herhangi bir modülde M/H veya komut
-  sonrası durgunluk doğrulanmadı, veri eski/eksik (U2ERR), senkron dışı, aktif alarm (F/U2/COMM/
-  SYNC/LINK/DATA), referanssız (MOV/ALL/ARR) → hareket yok.
-- **Kabul ≠ tamamlanma:** yazma başarılı + bu işleme ait ACK + **ACK'ten sonra istenmiş** taze
-  STAT + 9 geçerli token (`^[IMHSF]\d+$`) + tolerans (±2 mm; HOME ≈0). `*ERR`/ACK zaman aşımı/yazma
-  hatası → işlem biter, kalan modüllere gönderilmez, modül "senkron dışı", **kör tekrar yok**.
+  sonrası durgunluk doğrulanmadı, veri eski/eksik (U2ERR), cevap sırası belirsiz, senkron dışı,
+  aktif alarm (F/U2/COMM/SYNC/LINK/DATA), bu oturumda görülmüş modül cevap vermiyor, referanssız
+  (MOV/ALL/ARR: **modülün tamamına** referans; tek motor referansı yetmez, K31) → hareket yok.
+- **Kabul ≠ tamamlanma:** yazma başarılı + bu işleme ait ACK + **ACK'ten sonra istenmiş** ve **cevap
+  sırası kurulmuş** taze STAT + 9 geçerli token (`^[IMHSF]\d+$`) + tolerans (±2 mm; HOME ≈0).
+  `*ERR`/ACK zaman aşımı/yazma hatası/yazma takılması → işlem biter, kalan modüllere gönderilmez,
+  modül "senkron dışı", **kör tekrar yok**.
+- **Cevap sırası (istek kimliği yok):** zaman aşımı / yazma sorunu / istenmemiş cevap sonrası o
+  modülün sonraki cevapları veri değildir (yalnız F alarmı üretebilir); gözetim PING gönderir,
+  PONG'dan sonra istenen STAT kullanılır. Bu **kesin kanıt değildir** (firmware sıralı işleme
+  varsayımı); "doğrulandı" denmez. `docs/v2.2/GUVENLIK_ACIK_KONULAR.md` §5, K11.
 - **İşlem / bağlantı nesli:** her callback op id + faz + link nesli kontrol eder (eski komut sızmaz).
-- **Tek seri yönetici** (`link.py`): hatta tek bekleyen istek; STAT 2,5 sn, ACK 2,5 sn, PING 0,3 sn
-  zaman aşımı; zaman aşımında hat koruması; kuyruk ≤64. Yazma UI thread'inde değil.
-- **Gözetim her zaman sürer:** bağlıyken tick (1 sn) başına tek modül STAT, bilinen bütün modüller
-  round-robin. İş sonucu (arıza/zaman aşımı) gözetimi bitirmez.
+- **Tek seri yönetici** (`link.py`): hatta tek bekleyen istek; yazma tamamlanması 1,5 sn'de gelmezse
+  bağlantı düşer (K35); STAT 2,5 sn, ACK 2,5 sn, PING 0,3 sn zaman aşımı; zaman aşımında hat
+  koruması; kuyruk ≤64. Yazma UI thread'inde değil.
+- **Gözetim her zaman sürer:** bağlıyken tick (1 sn) başına tek modül; gözetim isteği kuyruğun
+  **önüne** girer, tarama ve hareket dağıtımı sırasında da sürer; operatör sorgusu (terminal/Bakım)
+  en fazla 4 bekler, aynı sorgu ikinci kez girmez (K34). Bu oturumda görülen modüller bağlantı
+  kesilse de gözetim listesinde kalır (K30). İş sonucu (arıza/zaman aşımı) gözetimi bitirmez.
+- **Onay bağlamı (K32):** onay penceresi / motor paneli açılıştaki modül, motor, modül listesi,
+  model ve bağlantı oturumunu saklar; bağlam değişirse kapanır, komut gitmez. Yeni onay eklerken
+  aynı kuralı uygula (`startProductionConfirmed` vb.).
 - **Alarm yaşam döngüsü:** aktif → "Uyarıyı gördüm" (onay, SİLMEZ) → yalnız taze geçerli STAT
   normale dönüşü gösterince "giderildi" → onaylıysa listeden kalkar. İletişim belirsizliğinde
   çözülmez; yeni işlem alarmı temizlemez. Reset (beklenmeyen `I`), kopma, F, HOME zaman aşımı →
@@ -167,8 +179,10 @@ Ana fikir: **arayüz bilmediği bir şeyi bildiğini iddia etmez.** Gerekçeler/
   "Referans alma tamamlandı (firmware bildirimi)"; "hedefe ulaştı" ≠ güvenli erişim.
   "doğrulandı / güvenli / durdu" kanıtsız kullanılmaz (`tests/test_texts.py` denetler).
 - **Testler (donanımsız):** `cd UI_v2.0_QML && QT_QPA_PLATFORM=offscreen venv/bin/python3 -m
-  unittest discover -s tests -v` (sahte köprü `sim_bridge.py` + sahte saat; QML yükleme testi
-  dahil). Commit öncesi yeşil olmalı.
+  unittest discover -s tests -v` (sahte köprü `sim_bridge.py` + sahte saat; QML yükleme testi,
+  **gerçek QML etkileşim testleri** `qmlui_tests.py`, deploy script testi dahil). Commit öncesi
+  yeşil olmalı. **Repo kökünde kör test keşfi yapma** (`Web_UI/test_mov.py` gerçek porta MOV yazar;
+  yalnız `--donanim` ile çalışır). Yeşil test ≠ makine güvenli.
 
 ### HMI stil rehberi (ISA-101 / IEC 60073 / ISO 9241-303)
 
@@ -226,10 +240,13 @@ arıza verir. Çözüm firmware'de değil, **interpolasyonda**: `stl_interpolato
 RS485 köprüsü 9600 baud ≈ 960 bayt/sn; bir STAT sorgu+cevap ≈ 63 bayt ≈ 66 ms.
 Tüm bekleyen modüllere aynı anda STAT atmak 16 modülde ≈ 1 sn hat trafiği (%70+ doluluk)
 → çakışma, bozuk satır, yanlış/gecikmeli bitiş teyidi. UI bu yüzden **round-robin** poll eder
-(tick başına tek modül, `POLL_TICK_MS`) ve komut dağıtımı sürerken poll yapmaz.
-**v2.2:** bütün seri trafik tek kuyruktan (`backend/link.py`, hatta tek bekleyen istek).
-En kötü alarm gecikmesi (`hmi_config.worst_alarm_latency_s`): N×2,8 sn + 2,5 sn → 16 modülde
-**47,3 sn** (tipik N×1 sn: 16,1 sn). Ayrıntı: `UI_v2.0_QML/docs/v2.2/ILERLEME.md`.
+(tick başına tek modül, `POLL_TICK_MS`).
+**v2.2:** bütün seri trafik tek kuyruktan (`backend/link.py`, hatta tek bekleyen istek → çakışma
+yok); bu yüzden gözetim komut dağıtımı ve tarama sırasında da (araya girerek) sürer.
+En kötü alarm gecikmesi: yalnız gözetim trafiği varken `worst_alarm_latency_s` = N×2,8 + 2,5 sn
+(16 modül **47,3 sn**; tipik N×1 sn); terminal/Bakım/tarama/dağıtım trafiği de varken
+`worst_alarm_latency_loaded_s` (1/4/16 modül **5,32/22,24/89,92 sn**). Varsayımlar ve ölçümler:
+`UI_v2.0_QML/README.md`, `docs/v2.2/DUZELTME_TURU.md`.
 
 ## Raspberry Pi dağıtımı (UI_v2.0_QML)
 
@@ -243,7 +260,9 @@ Arayüz gerçek panelde çalışıyor: **Pi 5, Raspberry Pi OS Lite 64-bit (Trix
 - **Deploy akışı:** push → Pi'de `git pull --ff-only` → **offscreen QML kontrolu**
   (`QT_QPA_PLATFORM=offscreen venv/bin/python3 main.py`, kiosk'a dokunmadan sozdizimi/binding/
   traceback yakalar; Quick3D "isApiRhiBased ... not functional" BEKLENEN) → kiosk restart → `kalip.log`.
-  Kolaylik: `UI_v2.0_QML/deploy_pi.sh` (host'u `PI_HOST` env'den okur).
+  Kolaylik: `PI_HOST=... DEPLOY_BRANCH=ui_v2.0 UI_v2.0_QML/deploy_pi.sh` — Pi dalı/commit'i
+  beklenenden farkliysa, yerel degisiklik varsa veya QML kontrolu (`tests/qml_load_check.py`)
+  basarisizsa DURUR ve kiosk'u yeniden BASLATMAZ.
 
 ### Kritik ortam bulguları (kaybolmasın)
 1. pip PySide6 wheel'inde `libQt6EglFsKmsGbmSupport.so.6` YOK → **eglfs kullanılamaz**;

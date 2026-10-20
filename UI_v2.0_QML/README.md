@@ -15,7 +15,9 @@ Pi 5'te akıcı (Qt Quick scene-graph'ı GPU ile çizer). Protokol **v5.1** (fir
 - Model hedef haritası + 3D önizleme (**model hedefleri — ölçülen konum değildir**), haritaya
   dokununca modül ayrıntısı (hedef + son ölçüm)
 - Üretim (BAŞLA: gerekirse önce referans, sonra şekil), Referans al, Seçili modüle uygula
-- Bakım / Motor testi: Ölçülen ≠ Hedef, veri yaşı, uygulama içi sayısal tuş takımı, onaylı hareket
+- Bakım / Motor testi: Ölçülen ≠ Hedef, veri yaşı ("Son bilinen" = güncel doğrulanmamış), motora
+  dokununca motor paneli (tuş takımı + "Motor X'e referans al" + kapalı eylemin tam sebebi), onaylı
+  hareket; panel/onay açılıştaki modül ve oturuma bağlıdır, bağlam değişirse kapanır
 - Kalıcı alarm listesi ("Uyarıyı gördüm" kaydı silmez), durum şeridinde veri yaşı
 - Haberleşme günlüğü + terminal (aynı hareket yetkisinden geçer; SETID kilitli)
 
@@ -23,8 +25,8 @@ Pi 5'te akıcı (Qt Quick scene-graph'ı GPU ile çizer). Protokol **v5.1** (fir
 
 | Dosya | Görev |
 |---|---|
-| `controller.py` | QML köprüsü. **Tek hareket yetkisi** (`_authorize_motion`), işlem (op) ve bağlantı nesli, katı tamamlanma, sürekli gözetim, alarm modeli, model durumu |
-| `link.py` | **Tek seri işlem yöneticisi**: hatta tek bekleyen istek, istek başına zaman aşımı, sınırlı kuyruk, hareket komutlarında kör tekrar yok |
+| `controller.py` | QML köprüsü. **Tek hareket yetkisi** (`_authorize_motion`), işlem (op) ve bağlantı nesli, katı tamamlanma, sürekli gözetim (öncelikli; operatör sorgusu ≤4), zaman aşımı sonrası cevap sırası (PING/PONG çiti), oturumda görülen modül hafızası, alarm modeli, model durumu |
+| `link.py` | **Tek seri işlem yöneticisi**: hatta tek bekleyen istek, yazma dahil süre gözetimi (yazma 1,5 sn'de bitmezse bağlantı düşer), istek başına zaman aşımı, sınırlı kuyruk, gözetim isteği kuyruğun önüne girer, yazma sıra numarası, hareket komutlarında kör tekrar yok |
 | `protocol.py` | Saf fonksiyonlar: katı STAT şeması (`^[IMHSF]\d+$`, 9 token, `U2ERR`), ACK eşleme, terminal fiilleri, hedef doğrulama (10–590 mm) |
 | `serial_manager.py` | pyserial; yazma ayrı thread'de (`write_timeout`), okuma tamponu sınırlı, kopma bildirilir |
 | `hmi_config.py` | Bütün sabitler (tolerans, zaman aşımları, veri yaşı, alarm gecikmesi) + `config/machine.json` yükleyici |
@@ -54,21 +56,53 @@ cd UI_v2.0_QML
 QT_QPA_PLATFORM=offscreen venv/bin/python3 -m unittest discover -s tests -v
 ```
 
+Yalnız bu klasörde çalıştırın; **repo kökünde kör test keşfi yapmayın** (`Web_UI/test_mov.py`
+gibi araçlar gerçek seri porta komut yazar; artık `--donanim` bayrağı olmadan çalışmazlar).
+
 - `test_acceptance.py` — INCELEME kabul matrisinin otomatikleştirilebilen satırları
 - `test_motion_authority.py`, `test_supervision.py`, `test_model.py` — faz testleri
+- `test_review_regressions.py` — 2026-10-19 bağımsız inceleme bulguları 2–6 (önce kırmızı yazıldı):
+  yazma takılması, zaman aşımı sonrası eski cevap, sorgu yükü altında gözetim (1/4/16 modül, dolu
+  kuyruk, çift dokunma, 2 saatlik sahte saat), kayıp modül, tek motor referansı, alarm dalgalanması
+- `test_qml_interaction.py` → `qmlui_tests.py` (ayrı süreç) — **gerçek QML etkileşimi**: 1920×1080
+  pencereye QTest fare olayları; onay penceresi bağlamı, Bakım ekranı geometrisi (SİMÜLASYON bandı
+  dahil, yazı tipi payı), devre dışı sebebi, "Son bilinen", sonuç penceresi kuyruğu
+- `test_deploy_script.py` — `deploy_pi.sh` sahte ssh ile (uzak komut yerel kabukta, sahte git/python/
+  sudo); başarısız doğrulamada restart yok
+- `test_repo_safety.py` — test adlı dosyalar içe aktarmada seri işlem yapmaz; paket gerçek port açmaz
 - `test_protocol.py`, `test_link.py` — birim testleri (bilinen sınır: geç cevap eşleşmesi)
-- `test_texts.py` — operatör metinleri (eski metin yok, doğrulanmamış iddia yok, Türkçe karakter)
+- `test_texts.py` — operatör metinleri (eski metin/jargon yok, doğrulanmamış iddia yok, Türkçe karakter)
 - `test_qml_load.py` — `Main.qml` ayrı süreçte offscreen yüklenir; beklenmeyen QML/Qt uyarısı
   testi kırar ("Qt Quick 3D is not functional" offscreen'de beklenir ve filtrelenir)
 
 Ekran görüntüleri (offscreen 1920×1080, demo; 3D alan boş çıkar):
 
 ```bash
-QT_QPA_PLATFORM=offscreen venv/bin/python3 tests/qml_load_check.py --shots docs/v2.2/ekran
+QT_QPA_PLATFORM=offscreen venv/bin/python3 tests/qml_load_check.py --shots docs/v2.2/ekran_duzeltme
 ```
 
 Testler sahte köprü + sahte saatle çalışır: gerçek RS485 zamanlaması, USB kopması, motor hareketi,
 panel okunabilirliği ve dokunma isabeti **burada doğrulanmaz** (PANELDE / DONANIMDA TEST).
+**Testlerin yeşil olması makinenin güvenli olduğu anlamına gelmez** (`docs/v2.2/GUVENLIK_ACIK_KONULAR.md` §11).
+
+### Gözetim gecikmesi (arıza görünme süresi) — varsayımlar
+
+`backend/hmi_config.py`: yalnız gözetim trafiği varken en kötü `worst_alarm_latency_s(N)` =
+N×2,8 + 2,5 sn (1/4/16 modül: 5,3/13,7/47,3 sn); terminal/Bakım sorgusu, tarama veya hareket
+dağıtımı da varken `worst_alarm_latency_loaded_s(N)` (1/4/16 modül: 5,32/22,24/89,92 sn).
+Varsayımlar: gözetim isteği kuyruğun önüne girer ve en fazla bir yazılmış isteği bekler; modülün
+cevap sırası belirsiz değildir (değilse önce PING: +1 tur); her istek zaman aşımına uğrar (en kötü);
+seri yazma takılmaz (takılırsa bağlantı düşer). Gerçek RS-485 hattında ölçülmedi.
+
+## Dağıtım (Pi)
+
+```bash
+PI_HOST=berat@192.168.88.244 DEPLOY_BRANCH=ui_v2.0 ./deploy_pi.sh
+```
+
+Pi'deki dal `DEPLOY_BRANCH` değilse, izlenen dosyalarda değişiklik varsa, Pi HEAD beklenen commit
+(`DEPLOY_COMMIT` veya yerel `origin/<dal>`) değilse ya da offscreen QML kontrolü
+(`tests/qml_load_check.py`) başarısızsa script **durur ve kiosk'u yeniden başlatmaz**.
 
 ## `--demo` sınırları
 

@@ -30,7 +30,9 @@ class OldTextsGoneTest(unittest.TestCase):
                  "POZISYON HARITASI", "Klavuz", "SERIAL MONITOR", "Canli Durum", "'Hesapla'",
                  "Hazir", "Bosta", "REFERANS ALINMADI - islem", "Yanit vermeyen",
                  "Tum moduller hedef pozisyonda", "Encoder kablosunu ve mekanigi",
-                 "Once bir STL yukleyip", "Islem kesildi"]
+                 "Once bir STL yukleyip", "Islem kesildi",
+                 # inceleme 2026-10-19: kisaltma/jargon yerine acik ifade
+                 "Ref.", "ref. yok"]
 
     def test_forbidden_texts_absent(self):
         lits = []

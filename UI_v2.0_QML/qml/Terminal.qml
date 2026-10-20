@@ -72,6 +72,7 @@ Rectangle {
             spacing: Theme.gapMin
             TextField {
                 id: cmdField
+                objectName: "terminalInput"
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.dense ? Theme.touchDense : Theme.inputHeight
                 placeholderText: "Komut (ör. STAT:01, PING:01)"

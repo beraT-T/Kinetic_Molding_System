@@ -24,12 +24,59 @@ Item {
     // Hareket baslatmadan once onay (fiziksel makine hareket edecek).
     // Onay metni: model adi, hedef modul listesi, motor sayisi (v2.2). "Vazgeç" yalniz
     // pencereyi kapatir; hicbir hareketi iptal etmez (bu arayuzden hareket durdurulamaz).
+    // Inceleme duzeltmesi: pencerede GOSTERILEN baglam (modul listesi, secili modul, model,
+    // baglanti oturumu) acilista saklanir; degisirse pencere kapatilir ve backend de
+    // onaylanan baglamla calistirir (startProductionConfirmed vb.) - liste farkliysa reddeder.
+    function sameList(a, b) {
+        if (!a || !b || a.length !== b.length) return false
+        for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+        return true
+    }
+    function contextChange() {
+        var d = confirmDialog
+        if (d.session !== app.sessionId) return "bağlantı değişti"
+        if ((d.action === "production" || d.action === "home") &&
+                !page.sameList(d.mods, app.activeSlaves)) return "bulunan modül listesi değişti"
+        if ((d.action === "production" || d.action === "send") && d.modelId !== app.modelId)
+            return "yüklü model değişti"
+        if (d.action === "send" && d.csid !== app.currentSlaveId) return "seçili modül değişti"
+        return ""
+    }
+    function recheck() {
+        if (!confirmDialog.visible) return
+        var why = page.contextChange()
+        if (why.length) {
+            confirmDialog.visible = false
+            app.logUi("Onay penceresi kapatıldı: " + why + " (komut gönderilmedi)")
+        }
+    }
+    onVisibleChanged: if (!visible && confirmDialog.visible) {
+        confirmDialog.visible = false
+        app.logUi("Onay penceresi kapatıldı: STL Kontrol ekranından çıkıldı (komut gönderilmedi)")
+    }
+    Connections {
+        target: app
+        function onActiveSlavesChanged() { page.recheck() }
+        function onModelChanged() { page.recheck() }
+        function onCurrentSlaveIdChanged() { page.recheck() }
+        function onSessionChanged() { page.recheck() }
+    }
+
     AppDialog {
         id: confirmDialog
+        objectName: "mainConfirm"
         property string action: ""
+        property var mods: []
+        property int csid: 0
+        property int modelId: 0
+        property int session: -1
         function ask(what) {
             confirmDialog.action = what
             var p = app.productionPlan
+            confirmDialog.mods = p.modules ? p.modules.slice() : []
+            confirmDialog.csid = app.currentSlaveId
+            confirmDialog.modelId = app.modelId
+            confirmDialog.session = app.sessionId
             var mods = "Modüller: " + page.modList(p.modules) + " (" + p.motors + " motor)"
             var exp = p.expectedConfigured
                       ? ("Beklenen modüller (machine.json): " + page.modList(p.expected) + ".")
@@ -57,15 +104,20 @@ Item {
                      "Referans al", "Vazgeç", Theme.warn)
             else
                 show("Seçili modüle uygula",
-                     "Model: " + p.model + "\nModül: " + app.currentSlaveId + " (9 motor)\n" +
+                     "Model: " + p.model + "\nModül: " + confirmDialog.csid + " (9 motor)\n" +
                      "Bu bir test işlemidir; yalnız bu modülün hedefleri uygulanır (~150 sn'ye kadar)." +
                      stop,
                      "Uygula", "Vazgeç", Theme.actionNeutral)
         }
         onAccepted: {
-            if (action === "production") app.startProduction()
-            else if (action === "home") app.startHomeAll()
-            else app.startSendSelected(app.currentSlaveId)
+            var why = page.contextChange()
+            if (why.length) {
+                app.logUi("Onay bağlamı değişti (" + why + "); komut gönderilmedi")
+                return
+            }
+            if (action === "production") app.startProductionConfirmed(mods, modelId)
+            else if (action === "home") app.startHomeAllConfirmed(mods)
+            else app.startSendSelectedConfirmed(csid, modelId)
         }
     }
 
@@ -253,6 +305,7 @@ Item {
                             spacing: Theme.gapMin
                             Heatmap {
                                 id: hm
+                                objectName: "heatmap"
                                 onModuleTapped: function(s) { moduleDetail.open(s) }
                                 width: Math.max(120, Math.min(mapArea.width - 84, mapArea.height))
                                 height: width
@@ -321,17 +374,26 @@ Item {
                             enabled: !app.busy
                         }
                         Text {
+                            objectName: "moduleSummary"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
                             text: "Bulunan modüller: " + page.modList(app.activeSlaves) +
+                                  (app.lostModules.length
+                                   ? ("   ·   CEVAP VERMEYEN (bu oturumda görülmüş): " +
+                                      page.modList(app.lostModules)) : "") +
                                   (app.expectedModules.length
                                    ? ("   ·   Beklenen: " + page.modList(app.expectedModules))
                                    : "   ·   Beklenen liste yapılandırılmadı")
-                            color: Theme.textDim; font.pixelSize: Theme.fsSmall
+                            color: app.lostModules.length ? Theme.warn : Theme.textDim
+                            font.bold: app.lostModules.length > 0
+                            font.pixelSize: Theme.fsSmall
                             font.family: Theme.fontMono
                         }
                     }
 
                     // Test: yalnizca secili module gonder (referans gerekli)
                     ActionButton {
+                        objectName: "btnSendSelected"
                         text: "Seçili modüle uygula"; subText: "test · referans gerekli"
                         color: Theme.actionNeutral
                         enabled: app.sendSelectedBlockReason === ""
@@ -340,6 +402,7 @@ Item {
                     }
                     // Sadece referans alma
                     ActionButton {
+                        objectName: "btnHomeAll"
                         text: "Referans al"; subText: "bulunan bütün modüller"
                         color: Theme.actionWarn
                         enabled: app.homeAllBlockReason === ""
@@ -350,6 +413,7 @@ Item {
                     // (Theme'deki "yesili gostergede kullanma" kurali butona uygulanmaz).
                     // Tehlikeli hareketi baslatan tek kontrol -> en buyuk hedef (~25 mm).
                     ActionButton {
+                        objectName: "btnStart"
                         text: "BAŞLA"; subText: "referans + şekil uygula"
                         color: Theme.actionStart
                         Layout.columnSpan: 2

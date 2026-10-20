@@ -27,12 +27,16 @@ QUERY_TIMEOUT_MS = 2500          # GETPOS/GETID/SETID
 INTER_FRAME_MS = 20              # cevap sonrasi hatta yeni yazmadan once bosluk
 POST_TIMEOUT_GUARD_MS = 300      # zaman asimindan sonra gec cevap icin hatti dinle
 QUEUE_MAX = 64                   # seri istek kuyrugu ust siniri
+USER_QUERY_MAX = 4               # operator sorgulari (terminal/Bakim) en fazla bu kadar bekler
 COMM_FAIL_LIMIT = 2              # ardisik cevapsiz istek -> modul erisilemez
 SYNC_CONFIRM = 2                 # K11: senkron disi modul icin ardisik tutarli taze STAT
 OP_PHASE_TIMEOUT_S = 300.0       # faz basina (home ~200 sn, hareket ~150 sn + pay)
 
 # ---------------- seri port (SerialManager) ----------------
 SERIAL_WRITE_TIMEOUT_S = 0.5     # yazma takilirsa UI degil yazici thread bekler
+# Yazma tamamlanma bildirimi icin ust sinir (write_timeout + flush + thread gecikmesi payi).
+# Asilirsa yazma "belirsiz" sayilir ve baglanti dusurulur (hat askida; kor tekrar yok).
+WRITE_DONE_TIMEOUT_MS = 1500
 SERIAL_MAX_LINE = 512            # satir sonu gelmeyen tampon siniri (bayt)
 SERIAL_LINE_QUEUE_MAX = 256      # okuyucu -> ana thread satir kuyrugu siniri
 
@@ -54,9 +58,36 @@ def data_stale_s(n_modules):
 
 
 def worst_alarm_latency_s(n_modules):
-    """Bir motor F'ye dustukten sonra operatorun gormesine kadar en kotu sure:
+    """YALNIZ gozetim trafigi varken (terminal/Bakim sorgusu, tarama, hareket dagitimi
+    yok) bir motor F'ye dustukten sonra operatorun gormesine kadar en kotu sure:
     modulun bir sonraki sorgusu (en kotu tur) + o sorgunun cevabi."""
     return worst_poll_round_s(n_modules) + STAT_TIMEOUT_MS / 1000.0
+
+
+def max_slot_s():
+    """Hatti tek istegin en uzun mesgul edebilecegi sure: en uzun cevap bekleme +
+    zaman asimi sonrasi koruma (cevap gelirse cerceve arasi bosluk daha kisadir)."""
+    longest = max(STAT_TIMEOUT_MS, MOTION_ACK_TIMEOUT_MS, QUERY_TIMEOUT_MS)
+    return (longest + max(POST_TIMEOUT_GUARD_MS, INTER_FRAME_MS)) / 1000.0
+
+
+def worst_alarm_latency_loaded_s(n_modules):
+    """Gozetimle AYNI hatti paylasan baska trafik varken (terminal/Bakim sorgusu,
+    tarama PING'i, hareket komutu) en kotu ariza gorunme suresi.
+
+    Varsayimlar (link.py + Controller._poll_next):
+      - gozetim sorgusu kuyrugun ONUNE girer; bekleyen gozetim istegi en fazla 1 tanedir;
+      - yazilmis istek kesilemez -> her gozetim sorgusu en fazla BIR baska istegi bekler;
+      - modulun hat sirasi belirsiz degildir (zaman asimindan sonra once PING citi gerekir:
+        o modul icin +1 tur);
+      - butun istekler zaman asimina ugrar (en kotu durum); seri yazma takilmaz
+        (takilirsa WRITE_DONE_TIMEOUT_MS sonra baglanti dusurulur).
+    Formul: (N-1) x 2 x slot + slot + cerceve arasi + STAT zaman asimi.
+    1 modul: 5,32 sn; 4 modul: 22,24 sn; 16 modul: 89,92 sn."""
+    n = max(1, int(n_modules))
+    slot = max_slot_s()
+    gap = INTER_FRAME_MS / 1000.0
+    return (n - 1) * 2 * (slot + gap) + slot + gap + STAT_TIMEOUT_MS / 1000.0
 
 
 def typical_alarm_latency_s(n_modules):

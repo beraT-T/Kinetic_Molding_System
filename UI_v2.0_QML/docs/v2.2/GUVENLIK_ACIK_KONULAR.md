@@ -53,12 +53,32 @@ doğrulama firmware/donanım işidir (`PROTOKOL_ONERI_v5.2.md` §3).
 olduğu anlamına gelir. Kalıp alanına güvenli erişim anlamına **gelmez** (REARM ile kendiliğinden
 yeniden hareket mümkün; enerji açık). Başarı mesajı bunu açıkça söyler.
 
-## 5. İşlem kimliği yok (Bulgu 1, protokol kısmı)
+## 5. İşlem kimliği yok (Bulgu 1, protokol kısmı; 2026-10-19 inceleme bulgu 2)
 
 Cevaplarda işlem/sıra numarası olmadığından, zaman aşımına uğramış bir isteğin geç cevabı sonraki
-aynı isteğe eşlenebilir. v2.2 azaltması: tek seri yönetici (hatta tek istek), zaman aşımı sonrası
-hat koruması, "senkron dışı" + ardışık 2 tutarlı taze STAT (K11). Kalan risk belgelenmiştir
-(`tests/test_link.py`).
+aynı isteğe eşlenebilir. İlk v2.2 sürümü bunu "senkron dışı + 2 tutarlı STAT" (K11) ile azalttığını
+söylüyordu, ama STAT zaman aşımında bunu **uygulamıyordu**: bağımsız incelemede, HOME sürerken
+(motorlar `H`) zaman aşımından sonraki STAT'a eşleşen eski `9×S0` cevabı "Referans alma tamamlandı"
+üretti. Düzeltme (`controller._aligned`, `_note_misaligned`, `_poll_next`):
+
+- Zaman aşımı, yazma hatası/takılması veya modül kimliği taşıyan **istenmemiş** cevaptan sonra o
+  modülün **cevap sırası belirsiz** sayılır. Sonraki cevaplar veri olarak kullanılmaz (ölçüm,
+  tamamlanma, alarm çözme, durgunluk doğrulaması yok); içlerindeki arıza (`F`) yine alarm üretir.
+- Gözetim o modüle STAT yerine `PING` gönderir. `PONG` geldiğinde, ondan **önce** gönderilmiş
+  isteklerin geç cevaplarının ondan önce gelmiş olması beklenir; ondan sonra istenen STAT veri olarak
+  kullanılır. Bu sürede hareket kilitlidir ("cevap sırası yeniden doğrulanıyor").
+- Komut kabulü belirsizse (ACK zaman aşımı, `*ERR`, yazma sorunu) ayrıca SYNC kaydı açılır; kayıt,
+  sıra yeniden kurulduktan sonra iki ardışık tutarlı ve hareketsiz durumla kapanır (K11).
+
+**Kalan sınır (yazılımla kapatılamaz):** bu bir **çıkarımdır, kanıt değildir.** Dayandığı
+varsayımlar: (1) firmware komutları sırayla işler ve cevaptan sonra RS485 girişini boşaltır
+(`Adaptif_kalip_v5f411_U3_4motor/src/main.cpp` `loop`/`Send_Response`/`RS485_RX_Mode` — kaynaktan
+okundu, **donanımda ölçülmedi**); (2) köprü ve USB tamponu satır sırasını korur; (3) çitten sonra
+gelen, gerçekte başka bir isteğe ait ama aynı biçimde bir satır ayırt edilemez. **İki ardışık
+benzer cevap tazeliğin kesin kanıtı değildir**; arayüz bu yüzden "doğrulandı" demez. Kesin çözüm:
+protokolde istek kimliği (`PROTOKOL_ONERI_v5.2.md` §2). Bilinen sınırı gösteren testler:
+`test_link.test_residual_risk_late_reply_matches_next_same_request` (link düzeyi) ve
+`test_review_regressions.StaleReplyAfterTimeoutTest` (davranış).
 
 ## 6. U2 hatasında U3'ün kendi motorlarını yine zamanlaması (Bulgu 6 eki)
 
@@ -75,3 +95,32 @@ modeldeki en büyük komşu farkını **raporlar**; sınır uygulamaz (K14).
 Panel okunabilirliği, eldivenli dokunma isabeti, parlama, Pi performansı/bellek, RS-485 elektriksel
 zamanlaması, gerçek USB kopma davranışı, motor hareketi, güç devresi. Ayrıntılı test adımları:
 `ILERLEME.md` → SABAH ÖZETİ → PANELDE TEST / DONANIMDA TEST GEREKLİ.
+
+## 9. Seri yazmanın takılması (2026-10-19 inceleme bulgu 5)
+
+Yazma tamamlanma bildirimi 1,5 sn içinde gelmezse (`WRITE_DONE_TIMEOUT_MS`; ör. USB sürücüsü veya
+`flush()` askıda) komutun modüle ulaşıp ulaşmadığı **bilinemez** ve hareket başlamış olabilir.
+Arayüz: isteği "yazma tamamlanmadı" ile bitirir, işlemi sonlandırır, kalan modüllere komut
+göndermez, **komutu tekrar etmez**, bağlantıyı düşürür (LINK + SYNC). Gecikmiş/eski oturum
+bildirimleri yok sayılır. Yeniden bağlanınca durum okunana kadar hareket kilitlidir. Gerçek USB
+askıda kalma davranışı ölçülmedi.
+
+## 10. Kayıp modül ve yeniden başlatma (2026-10-19 inceleme bulgu 3)
+
+Bu oturumda görülmüş bir modül cevap vermezse (bağlantı kesilip yeniden kurulsa da) kapsam
+sessizce daraltılmaz: COMM kaydı açılır, bütün hareket kilitli kalır. **Sınır:** bu hafıza
+uygulama yeniden başlayınca sıfırlanır (kalıcılık kararı K30, ONAY BEKLİYOR). `config/machine.json`
+`expected_modules` doldurulmadan, uygulama yeniden başlatıldıktan sonra eksik bir modülü arayüz
+**fark edemez**; yalnız BAŞLA onayında "beklenen liste yapılandırılmadı" uyarısı ve bulunan
+modüllerin listesi gösterilir. Gerçek kurulum listesi kullanıcı tarafından yazılmalıdır (arayüz
+uydurmaz).
+
+## 11. Testlerin söyledikleri ve söylemedikleri
+
+Donanımsız testlerin (sahte köprü, sahte saat, `loop://` seri, offscreen QML) yeşil olması
+**makinenin güvenli olduğu anlamına gelmez.** Testler yalnız arayüzün kendi kurallarını
+(yetki, kilit, tamamlanma ölçütü, metin, yerleşim) sahte ortamda doğrular. RS-485 elektriksel
+davranışı, firmware'in gerçek zamanlaması, motor/encoder davranışı, enerji kesme ve fiziksel
+durdurma, dokunmatik panelde okunabilirlik ve isabet ayrıca doğrulanmalıdır (`DUZELTME_TURU.md`
+→ "Fiziksel panelde doğrulanacaklar" ve "Gerçek donanım öncesi açık kararlar").
+
